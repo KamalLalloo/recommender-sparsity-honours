@@ -1,0 +1,17 @@
+# Ranking evaluation
+eval_args:
+  mode: full
+
+# Metrics
+metrics:
+  - Recall
+  - NDCG
+  - Hit
+  - Precision
+
+topk:
+  - 10
+
+valid_metric: Recall@10
+
+valid_metric_bigger: true

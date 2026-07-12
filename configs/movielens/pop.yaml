@@ -1,0 +1,17 @@
+model: Pop
+
+seed: 2025
+
+reproducibility: true
+
+epochs: 1
+
+train_batch_size: 2048
+
+eval_batch_size: 4096
+
+state: INFO
+
+show_progress: true
+
+device: cpu

@@ -1,0 +1,23 @@
+# Dataset
+dataset: movielens
+
+# Path containing movielens.train.inter, movielens.valid.inter,
+# movielens.test.inter
+data_path: ./data/recbole/
+
+# Field definitions
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+TIME_FIELD: timestamp
+
+# Atomic file format
+field_separator: "\t"
+
+# We already created the train/validation/test split
+benchmark_filename:
+  - train
+  - valid
+  - test
+
+# Keep duplicate interactions (our preprocessing already handled this)
+rm_dup_inter: null
