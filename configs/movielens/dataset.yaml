@@ -1,23 +1,50 @@
-# Dataset
+# ==========================================================
+# Dataset Configuration
+#
+# NOTE:
+# The data_path value below is only a placeholder.
+# It is overridden at runtime by train_model.py using the
+# --dataset-dir command-line argument.
+# ==========================================================
+
+# Dataset name
 dataset: movielens
 
-# Path containing movielens.train.inter, movielens.valid.inter,
-# movielens.test.inter
-data_path: ./data/recbole/
+# Placeholder dataset path.
+# train_model.py will replace this with the selected dataset
+# directory (e.g. baseline, global/50, recent/25, etc.).
+data_path: .
 
+# ==========================================================
 # Field definitions
+# ==========================================================
+
 USER_ID_FIELD: user_id
 ITEM_ID_FIELD: item_id
 TIME_FIELD: timestamp
 
+# ==========================================================
 # Atomic file format
+# ==========================================================
+
 field_separator: "\t"
 
-# We already created the train/validation/test split
+# ==========================================================
+# Benchmark split
+#
+# The dataset already contains fixed train/validation/test
+# files generated during preprocessing.
+# ==========================================================
+
 benchmark_filename:
   - train
   - valid
   - test
 
-# Keep duplicate interactions (our preprocessing already handled this)
+# ==========================================================
+# Duplicate interactions
+#
+# Duplicates were already handled during preprocessing.
+# ==========================================================
+
 rm_dup_inter: null

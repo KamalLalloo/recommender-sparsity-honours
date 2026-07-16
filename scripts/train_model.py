@@ -8,10 +8,21 @@ The model is selected through a command-line argument.
 
 Examples
 --------
-python scripts/train_model.py --model Pop
-python scripts/train_model.py --model ItemKNN
-python scripts/train_model.py --model BPR
-python scripts/train_model.py --model EASE
+python scripts/train_model.py ^
+    --model Pop ^
+    --dataset-dir data/recbole/movielens/baseline
+
+python scripts/train_model.py ^
+    --model ItemKNN ^
+    --dataset-dir data/recbole/movielens/baseline
+
+python scripts/train_model.py ^
+    --model BPR ^
+    --dataset-dir data/recbole/movielens/baseline
+
+python scripts/train_model.py ^
+    --model EASE ^
+    --dataset-dir data/recbole/movielens/baseline
 
 Pipeline
 --------
@@ -64,7 +75,7 @@ RESULTS_FILE = (
     PROJECT_ROOT
     / "results"
     / "raw"
-    / "baseline_results.csv"
+    / "experiment_results.csv"
 )
 
 SUPPORTED_MODELS = {
@@ -85,12 +96,15 @@ def parse_arguments() -> argparse.Namespace:
 
     The model name is accepted case-insensitively. For example,
     both '--model BPR' and '--model bpr' are accepted.
+
+    The dataset directory specifies which benchmark dataset
+    should be loaded (e.g. baseline, global/50, recent/25).
     """
 
     parser = argparse.ArgumentParser(
         description=(
             "Train and evaluate a RecBole recommender model "
-            "on the processed MovieLens dataset."
+            "on a benchmark dataset."
         )
     )
 
@@ -100,6 +114,15 @@ def parse_arguments() -> argparse.Namespace:
         help=(
             "Model to run. Supported baseline models: "
             "Pop, ItemKNN, BPR, EASE."
+        ),
+    )
+
+    parser.add_argument(
+        "--dataset-dir",
+        required=True,
+        help=(
+            "Directory containing movielens.train.inter, "
+            "movielens.valid.inter and movielens.test.inter."
         ),
     )
 
@@ -125,6 +148,55 @@ def resolve_model_name(user_input: str) -> str:
         )
 
     return SUPPORTED_MODELS[normalised_name]
+
+
+def validate_dataset_directory(
+    dataset_directory: Path,
+) -> None:
+    """
+    Validate that the dataset directory exists and contains the
+    benchmark interaction files.
+    """
+
+    print("\nValidating dataset directory...")
+
+    if not dataset_directory.is_dir():
+        raise FileNotFoundError(
+            f"Dataset directory does not exist:\n"
+            f"{dataset_directory}"
+        )
+
+    required_files = [
+        "movielens.train.inter",
+        "movielens.valid.inter",
+        "movielens.test.inter",
+    ]
+
+    missing_files = [
+        filename
+        for filename in required_files
+        if not (dataset_directory / filename).is_file()
+    ]
+
+    if missing_files:
+        missing_text = "\n".join(
+            f"  - {filename}"
+            for filename in missing_files
+        )
+
+        raise FileNotFoundError(
+            "Dataset directory is missing the following files:\n"
+            f"{missing_text}"
+        )
+
+    print(
+        f"Dataset directory: "
+        f"{dataset_directory.relative_to(PROJECT_ROOT)}"
+    )
+
+    print("Dataset directory validation passed.")
+
+
 
 
 # ==========================================================
@@ -189,6 +261,7 @@ def validate_config_files(
 def create_config(
     model_name: str,
     config_files: list[Path],
+    dataset_directory: Path,
 ) -> Config:
     """
     Create the RecBole configuration object.
@@ -204,6 +277,9 @@ def create_config(
             for path in config_files
         ],
     )
+
+    # Override the placeholder data_path from dataset.yaml
+    config["data_path"] = str(dataset_directory.resolve())
 
     print("RecBole configuration loaded successfully.")
 
@@ -434,6 +510,7 @@ def print_metrics(
 
 def print_experiment_summary(
     config: Config,
+    dataset_directory: Path,
     best_valid_score,
     best_valid_result,
     test_result,
@@ -449,6 +526,10 @@ def print_experiment_summary(
     print("=" * 60)
 
     print(f"Dataset       : {config['dataset']}")
+    print(
+    f"Dataset path  : "
+    f"{dataset_directory.relative_to(PROJECT_ROOT)}"
+)
     print(f"Model         : {config['model']}")
     print(f"Device        : {config['device']}")
     print(f"Seed          : {config['seed']}")
@@ -521,6 +602,7 @@ def convert_metric_values(metrics) -> dict:
 
 def save_experiment_results(
     config: Config,
+    dataset_directory: Path,
     best_valid_score,
     best_valid_result,
     test_result,
@@ -528,7 +610,7 @@ def save_experiment_results(
     evaluation_time: float,
 ) -> None:
     """
-    Append one completed experiment to baseline_results.csv.
+    Append one completed experiment to experiment_results.csv.
 
     Validation and test metrics are given prefixes so that their
     meanings remain clear in the results file.
@@ -567,6 +649,10 @@ def save_experiment_results(
 
         # Experiment metadata
         "dataset": str(config["dataset"]),
+
+        "dataset_directory": str(
+            dataset_directory.relative_to(PROJECT_ROOT)
+        ),
 
         "model": str(config["model"]),
 
@@ -664,6 +750,19 @@ def main() -> None:
 
     arguments = parse_arguments()
 
+    dataset_directory = Path(
+        arguments.dataset_dir
+    )
+
+    if not dataset_directory.is_absolute():
+        dataset_directory = (
+            PROJECT_ROOT / dataset_directory
+        )
+
+    validate_dataset_directory(
+        dataset_directory
+    )
+
     model_name = resolve_model_name(
         arguments.model
     )
@@ -679,6 +778,10 @@ def main() -> None:
     print(f"Project root : {PROJECT_ROOT}")
     print(f"Dataset      : {DATASET_NAME}")
     print(f"Model        : {model_name}")
+    print(
+        f"Dataset dir  : "
+        f"{dataset_directory.relative_to(PROJECT_ROOT)}"
+    )
 
     # Validate and load configuration.
     validate_config_files(config_files)
@@ -686,6 +789,7 @@ def main() -> None:
     config = create_config(
         model_name,
         config_files,
+        dataset_directory,
     )
 
     # Initialise deterministic random seeds before dataset creation.
@@ -750,6 +854,7 @@ def main() -> None:
     # Display results.
     print_experiment_summary(
         config,
+        dataset_directory,
         best_valid_score,
         best_valid_result,
         test_result,
@@ -760,6 +865,7 @@ def main() -> None:
     # Save results.
     save_experiment_results(
         config,
+        dataset_directory,
         best_valid_score,
         best_valid_result,
         test_result,
