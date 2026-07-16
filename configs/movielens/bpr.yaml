@@ -1,0 +1,27 @@
+# Model
+model: BPR
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# Training
+epochs: 100
+learning_rate: 0.001
+
+# Embedding size
+embedding_size: 64
+
+# Regularisation
+weight_decay: 1e-5
+
+# Batch sizes
+train_batch_size: 2048
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true
+
+# CPU execution
+use_gpu: false

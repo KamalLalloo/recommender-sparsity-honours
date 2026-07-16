@@ -556,23 +556,38 @@ def save_experiment_results(
     )
 
     result_row = {
+
         "timestamp": datetime.now().isoformat(
             timespec="seconds"
         ),
+
+        # Research experiment information
+        "experiment_type": "Baseline",
+        "retention_level": 100,
+
+        # Experiment metadata
         "dataset": str(config["dataset"]),
+
         "model": str(config["model"]),
+
         "seed": int(config["seed"]),
+
         "device": str(config["device"]),
+
         "valid_metric": str(config["valid_metric"]),
+
         "best_valid_score": float(best_valid_score),
+
         "training_time_seconds": round(
             training_time,
             6,
         ),
+
         "evaluation_time_seconds": round(
             evaluation_time,
             6,
         ),
+
         "total_time_seconds": round(
             training_time + evaluation_time,
             6,

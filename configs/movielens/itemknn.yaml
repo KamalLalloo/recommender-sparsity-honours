@@ -1,0 +1,23 @@
+# Model
+model: ItemKNN
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# ItemKNN hyperparameters
+k: 100
+
+# Similarity measure
+shrink: 0
+
+# DataLoader settings
+train_batch_size: 2048
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true
+
+# CPU execution
+use_gpu: false
