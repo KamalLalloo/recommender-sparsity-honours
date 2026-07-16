@@ -1,17 +1,21 @@
+# Model
 model: Pop
 
+# Reproducibility
 seed: 2025
-
 reproducibility: true
 
+# Pop is a non-learning traditional model.
+# RecBole's TraditionalTrainer uses one epoch.
 epochs: 1
 
+# DataLoader settings
 train_batch_size: 2048
-
 eval_batch_size: 4096
 
+# Runtime output
 state: INFO
-
 show_progress: true
 
-device: cpu
+# Initial baseline runs use the CPU
+use_gpu: false

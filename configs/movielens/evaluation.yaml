@@ -1,17 +1,26 @@
-# Ranking evaluation
+# Full-sort ranking evaluation
 eval_args:
+  group_by: user
+  order: TO
   mode: full
 
-# Metrics
+# Ranking metrics used in the research methodology.
+# RecBole calls HitRate "Hit".
 metrics:
   - Recall
   - NDCG
   - Hit
-  - Precision
+  - MRR
 
+# Recommendation list lengths
 topk:
+  - 5
   - 10
+  - 20
 
-valid_metric: Recall@10
-
+# Primary validation metric
+valid_metric: NDCG@10
 valid_metric_bigger: true
+
+# Number of decimal places reported
+metric_decimal_place: 6
