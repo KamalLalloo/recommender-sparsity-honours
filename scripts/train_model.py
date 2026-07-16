@@ -4,24 +4,34 @@ Train and Evaluate a RecBole Recommender Model
 This script runs a complete RecBole experiment using the
 predefined MovieLens train, validation, and test files.
 
-Current experiment
-------------------
-Dataset: MovieLens-1M
-Model: Pop
+The model is selected through a command-line argument.
+
+Examples
+--------
+python scripts/train_model.py --model Pop
+python scripts/train_model.py --model ItemKNN
+python scripts/train_model.py --model BPR
+python scripts/train_model.py --model EASE
 
 Pipeline
 --------
-1. Load configuration
-2. Initialise reproducibility settings
-3. Create the RecBole dataset
-4. Create train, validation, and test DataLoaders
-5. Initialise the recommendation model
-6. Initialise the appropriate RecBole trainer
-7. Fit the model
-8. Evaluate the model on the test set
-9. Display validation and test metrics
+1. Parse command-line arguments
+2. Locate and validate configuration files
+3. Load the RecBole configuration
+4. Initialise reproducibility settings
+5. Create the RecBole dataset
+6. Create train, validation, and test DataLoaders
+7. Initialise the selected recommendation model
+8. Initialise the appropriate RecBole trainer
+9. Fit the model
+10. Evaluate the model on the test set
+11. Display validation and test metrics
+12. Save the experiment results to CSV
 """
 
+import argparse
+import csv
+from datetime import datetime
 from logging import getLogger
 from pathlib import Path
 from time import perf_counter
@@ -37,26 +47,114 @@ from recbole.utils import (
 
 
 # ==========================================================
-# Experiment Constants
+# Project Constants
 # ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-MODEL_NAME = "Pop"
 DATASET_NAME = "movielens"
 
-CONFIG_FILES = [
-    PROJECT_ROOT / "configs" / "movielens" / "dataset.yaml",
-    PROJECT_ROOT / "configs" / "movielens" / "evaluation.yaml",
-    PROJECT_ROOT / "configs" / "movielens" / "pop.yaml",
-]
+CONFIG_DIR = (
+    PROJECT_ROOT
+    / "configs"
+    / DATASET_NAME
+)
+
+RESULTS_FILE = (
+    PROJECT_ROOT
+    / "results"
+    / "raw"
+    / "baseline_results.csv"
+)
+
+SUPPORTED_MODELS = {
+    "pop": "Pop",
+    "itemknn": "ItemKNN",
+    "bpr": "BPR",
+    "ease": "EASE",
+}
+
+
+# ==========================================================
+# Command-Line Arguments
+# ==========================================================
+
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    The model name is accepted case-insensitively. For example,
+    both '--model BPR' and '--model bpr' are accepted.
+    """
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Train and evaluate a RecBole recommender model "
+            "on the processed MovieLens dataset."
+        )
+    )
+
+    parser.add_argument(
+        "--model",
+        required=True,
+        help=(
+            "Model to run. Supported baseline models: "
+            "Pop, ItemKNN, BPR, EASE."
+        ),
+    )
+
+    return parser.parse_args()
+
+
+def resolve_model_name(user_input: str) -> str:
+    """
+    Convert a case-insensitive model argument into the exact
+    model name expected by RecBole.
+    """
+
+    normalised_name = user_input.strip().lower()
+
+    if normalised_name not in SUPPORTED_MODELS:
+        supported_text = ", ".join(
+            SUPPORTED_MODELS.values()
+        )
+
+        raise ValueError(
+            f"Unsupported model '{user_input}'. "
+            f"Supported models are: {supported_text}."
+        )
+
+    return SUPPORTED_MODELS[normalised_name]
 
 
 # ==========================================================
 # Configuration
 # ==========================================================
 
-def validate_config_files() -> None:
+def build_config_files(model_name: str) -> list[Path]:
+    """
+    Build the list of configuration files for the selected model.
+
+    Examples
+    --------
+    Pop      -> configs/movielens/pop.yaml
+    ItemKNN  -> configs/movielens/itemknn.yaml
+    BPR      -> configs/movielens/bpr.yaml
+    EASE     -> configs/movielens/ease.yaml
+    """
+
+    model_config_filename = f"{model_name.lower()}.yaml"
+
+    return [
+        CONFIG_DIR / "dataset.yaml",
+        CONFIG_DIR / "evaluation.yaml",
+        CONFIG_DIR / model_config_filename,
+    ]
+
+
+def validate_config_files(
+    config_files: list[Path]
+) -> None:
     """
     Confirm that every required configuration file exists.
     """
@@ -64,13 +162,15 @@ def validate_config_files() -> None:
     print("\nValidating configuration files...")
 
     missing_files = [
-        path for path in CONFIG_FILES
+        path
+        for path in config_files
         if not path.is_file()
     ]
 
     if missing_files:
         missing_text = "\n".join(
-            f"  - {path}" for path in missing_files
+            f"  - {path}"
+            for path in missing_files
         )
 
         raise FileNotFoundError(
@@ -78,13 +178,18 @@ def validate_config_files() -> None:
             f"{missing_text}"
         )
 
-    for path in CONFIG_FILES:
-        print(f"Found: {path.relative_to(PROJECT_ROOT)}")
+    for path in config_files:
+        print(
+            f"Found: {path.relative_to(PROJECT_ROOT)}"
+        )
 
     print("Configuration file validation passed.")
 
 
-def create_config() -> Config:
+def create_config(
+    model_name: str,
+    config_files: list[Path],
+) -> Config:
     """
     Create the RecBole configuration object.
     """
@@ -92,10 +197,11 @@ def create_config() -> Config:
     print("\nLoading RecBole configuration...")
 
     config = Config(
-        model=MODEL_NAME,
+        model=model_name,
         dataset=DATASET_NAME,
         config_file_list=[
-            str(path) for path in CONFIG_FILES
+            str(path)
+            for path in config_files
         ],
     )
 
@@ -136,9 +242,15 @@ def prepare_dataloaders(config: Config, dataset):
         movielens.train.inter
         movielens.valid.inter
         movielens.test.inter
+
+    RecBole does not recreate the data split here. It loads the
+    three split files that were generated during preprocessing.
     """
 
-    print("\nPreparing train, validation, and test DataLoaders...")
+    print(
+        "\nPreparing train, validation, "
+        "and test DataLoaders..."
+    )
 
     train_data, valid_data, test_data = data_preparation(
         config,
@@ -165,18 +277,23 @@ def initialise_model(config: Config, train_data):
     Load and initialise the configured recommendation model.
     """
 
-    print(f"\nInitialising {config['model']} model...")
+    print(
+        f"\nInitialising {config['model']} model..."
+    )
 
     model_class = get_model(config["model"])
 
-    # RecBole 1.2.1's own quick-start implementation passes
-    # the dataset stored by the training DataLoader.
+    # RecBole's quick-start implementation passes the dataset
+    # stored by the training DataLoader to the model class.
     model = model_class(
         config,
         train_data._dataset,
     ).to(config["device"])
 
-    print(f"{config['model']} model initialised successfully.")
+    print(
+        f"{config['model']} model "
+        "initialised successfully."
+    )
 
     print("\nModel Summary")
     print("-" * 40)
@@ -223,8 +340,8 @@ def train_recommender(
     """
     Fit the model and evaluate it on the validation set.
 
-    saved=False is used during initial pipeline validation so
-    that no checkpoint is required yet.
+    saved=False is currently used because baseline pipeline
+    validation does not require model checkpoints.
     """
 
     print("\nStarting model training...")
@@ -241,7 +358,9 @@ def train_recommender(
     training_time = perf_counter() - start_time
 
     print("\nModel training completed successfully.")
-    print(f"Training time: {training_time:.3f} seconds")
+    print(
+        f"Training time: {training_time:.3f} seconds"
+    )
 
     return (
         best_valid_score,
@@ -272,7 +391,10 @@ def evaluate_recommender(
     evaluation_time = perf_counter() - start_time
 
     print("\nTest evaluation completed successfully.")
-    print(f"Evaluation time: {evaluation_time:.3f} seconds")
+    print(
+        f"Evaluation time: "
+        f"{evaluation_time:.3f} seconds"
+    )
 
     return test_result, evaluation_time
 
@@ -298,7 +420,9 @@ def print_metrics(
 
     for metric_name, metric_value in metrics.items():
         try:
-            formatted_value = f"{float(metric_value):.6f}"
+            formatted_value = (
+                f"{float(metric_value):.6f}"
+            )
         except (TypeError, ValueError):
             formatted_value = str(metric_value)
 
@@ -331,7 +455,9 @@ def print_experiment_summary(
     print(f"Valid metric  : {config['valid_metric']}")
 
     try:
-        valid_score_text = f"{float(best_valid_score):.6f}"
+        valid_score_text = (
+            f"{float(best_valid_score):.6f}"
+        )
     except (TypeError, ValueError):
         valid_score_text = str(best_valid_score)
 
@@ -349,11 +475,166 @@ def print_experiment_summary(
 
     print("\nRuntime")
     print("-" * 40)
-    print(f"Training time   : {training_time:.3f} seconds")
-    print(f"Evaluation time : {evaluation_time:.3f} seconds")
+    print(
+        f"Training time   : "
+        f"{training_time:.3f} seconds"
+    )
+    print(
+        f"Evaluation time : "
+        f"{evaluation_time:.3f} seconds"
+    )
     print(
         "Total time      : "
         f"{training_time + evaluation_time:.3f} seconds"
+    )
+
+
+# ==========================================================
+# Result Saving
+# ==========================================================
+
+def convert_metric_values(metrics) -> dict:
+    """
+    Convert RecBole metric values into normal Python values.
+
+    RecBole may return NumPy scalar values. Converting them to
+    floats ensures that the values can be written cleanly to CSV.
+    """
+
+    converted_metrics = {}
+
+    if not metrics:
+        return converted_metrics
+
+    for metric_name, metric_value in metrics.items():
+        try:
+            converted_metrics[metric_name] = float(
+                metric_value
+            )
+        except (TypeError, ValueError):
+            converted_metrics[metric_name] = (
+                str(metric_value)
+            )
+
+    return converted_metrics
+
+
+def save_experiment_results(
+    config: Config,
+    best_valid_score,
+    best_valid_result,
+    test_result,
+    training_time: float,
+    evaluation_time: float,
+) -> None:
+    """
+    Append one completed experiment to baseline_results.csv.
+
+    Validation and test metrics are given prefixes so that their
+    meanings remain clear in the results file.
+
+    Examples
+    --------
+    validation_ndcg@10
+    test_recall@10
+    test_mrr@20
+    """
+
+    print("\nSaving experiment results...")
+
+    RESULTS_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    validation_metrics = convert_metric_values(
+        best_valid_result
+    )
+
+    test_metrics = convert_metric_values(
+        test_result
+    )
+
+    result_row = {
+        "timestamp": datetime.now().isoformat(
+            timespec="seconds"
+        ),
+        "dataset": str(config["dataset"]),
+        "model": str(config["model"]),
+        "seed": int(config["seed"]),
+        "device": str(config["device"]),
+        "valid_metric": str(config["valid_metric"]),
+        "best_valid_score": float(best_valid_score),
+        "training_time_seconds": round(
+            training_time,
+            6,
+        ),
+        "evaluation_time_seconds": round(
+            evaluation_time,
+            6,
+        ),
+        "total_time_seconds": round(
+            training_time + evaluation_time,
+            6,
+        ),
+    }
+
+    for metric_name, metric_value in validation_metrics.items():
+        result_row[
+            f"validation_{metric_name}"
+        ] = metric_value
+
+    for metric_name, metric_value in test_metrics.items():
+        result_row[
+            f"test_{metric_name}"
+        ] = metric_value
+
+    file_has_content = (
+        RESULTS_FILE.exists()
+        and RESULTS_FILE.stat().st_size > 0
+    )
+
+    if file_has_content:
+        with open(
+            RESULTS_FILE,
+            "r",
+            newline="",
+            encoding="utf-8",
+        ) as existing_file:
+            reader = csv.DictReader(existing_file)
+            existing_fieldnames = reader.fieldnames
+
+        if existing_fieldnames != list(result_row.keys()):
+            raise ValueError(
+                "The existing baseline_results.csv header "
+                "does not match the current result format. "
+                "Because the file was manually created and "
+                "should currently be empty, clear its contents "
+                "and run the experiment again."
+            )
+
+    with open(
+        RESULTS_FILE,
+        "a",
+        newline="",
+        encoding="utf-8",
+    ) as output_file:
+        writer = csv.DictWriter(
+            output_file,
+            fieldnames=list(result_row.keys()),
+        )
+
+        if not file_has_content:
+            writer.writeheader()
+
+        writer.writerow(result_row)
+
+    print(
+        "Experiment results saved successfully."
+    )
+    print(
+        f"Results file: "
+        f"{RESULTS_FILE.relative_to(PROJECT_ROOT)}"
     )
 
 
@@ -366,17 +647,31 @@ def main() -> None:
     Run the complete RecBole experiment.
     """
 
+    arguments = parse_arguments()
+
+    model_name = resolve_model_name(
+        arguments.model
+    )
+
+    config_files = build_config_files(
+        model_name
+    )
+
     print("=" * 60)
     print("RecBole Baseline Experiment")
     print("=" * 60)
 
     print(f"Project root : {PROJECT_ROOT}")
     print(f"Dataset      : {DATASET_NAME}")
-    print(f"Model        : {MODEL_NAME}")
+    print(f"Model        : {model_name}")
 
     # Validate and load configuration.
-    validate_config_files()
-    config = create_config()
+    validate_config_files(config_files)
+
+    config = create_config(
+        model_name,
+        config_files,
+    )
 
     # Initialise deterministic random seeds before dataset creation.
     init_seed(
@@ -439,6 +734,16 @@ def main() -> None:
 
     # Display results.
     print_experiment_summary(
+        config,
+        best_valid_score,
+        best_valid_result,
+        test_result,
+        training_time,
+        evaluation_time,
+    )
+
+    # Save results.
+    save_experiment_results(
         config,
         best_valid_score,
         best_valid_result,
