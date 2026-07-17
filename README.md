@@ -4,7 +4,7 @@ Evaluating the impact of interaction sparsity on recommendation performance acro
 
 **Honours Research Project, University of the Witwatersrand**
 **Author:** Kamal Lalloo
-**Supervisor:** [Supervisor Name]
+**Supervisor:** Dr. Hairong Bau
 **Timeline:** June 2026 – October 2026
 
 ## Overview
