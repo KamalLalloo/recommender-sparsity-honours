@@ -637,15 +637,25 @@ def save_experiment_results(
         test_result
     )
 
+    # Determine experiment type and retention level from the dataset directory.
+    relative_dataset_path = dataset_directory.relative_to(PROJECT_ROOT)
+
+    if relative_dataset_path.name == "baseline":
+        experiment_type = "Baseline"
+        retention_level = 100
+    else:
+        experiment_type = relative_dataset_path.parent.name.capitalize()
+        retention_level = int(relative_dataset_path.name)
+
+
     result_row = {
 
         "timestamp": datetime.now().isoformat(
             timespec="seconds"
         ),
 
-        # Research experiment information
-        "experiment_type": "Baseline",
-        "retention_level": 100,
+        "experiment_type": experiment_type,
+        "retention_level": retention_level,
 
         # Experiment metadata
         "dataset": str(config["dataset"]),
