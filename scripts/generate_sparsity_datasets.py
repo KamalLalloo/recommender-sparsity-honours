@@ -21,8 +21,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from sparsity import apply_global_sparsity
-
+from sparsity import (
+    apply_global_sparsity,
+    apply_recent_history_sparsity,
+    apply_early_profile_sparsity,
+)
 
 # ==========================================================
 # Project Constants
@@ -43,7 +46,6 @@ OUTPUT_ROOT = (
     / "data"
     / "recbole"
     / "movielens"
-    / "global"
 )
 
 RETENTION_LEVELS = {
@@ -51,6 +53,12 @@ RETENTION_LEVELS = {
     "50": 0.50,
     "25": 0.25,
     "10": 0.10,
+}
+
+SPARSITY_SCENARIOS = {
+    "global": apply_global_sparsity,
+    "recent": apply_recent_history_sparsity,
+    "early": apply_early_profile_sparsity,
 }
 
 SEED = 2025
@@ -183,41 +191,58 @@ def print_summary(
 # Dataset Generation
 # ==========================================================
 
-def generate_global_datasets(
+def generate_datasets(
     train: pd.DataFrame,
     valid: pd.DataFrame,
     test: pd.DataFrame,
 ) -> None:
     """
-    Generate Global Sparsity datasets.
+    Generate all sparsity datasets.
     """
 
-    print("\nGenerating Global Sparsity datasets...")
+    for scenario, sparsity_function in SPARSITY_SCENARIOS.items():
 
-    for level, retention in RETENTION_LEVELS.items():
+        print("\n" + "=" * 60)
+        print(f"{scenario.upper()} SPARSITY")
+        print("=" * 60)
 
-        print("\n" + "-" * 60)
-        print(f"Retention Level: {level}%")
+        for level, retention in RETENTION_LEVELS.items():
 
-        sparse_train = apply_global_sparsity(
-            interactions=train,
-            retention=retention,
-            seed=SEED,
-        )
+            print("\n" + "-" * 60)
+            print(f"Retention Level: {level}%")
 
-        output_dir = OUTPUT_ROOT / level
+            if scenario == "global":
 
-        save_dataset(
-            output_dir=output_dir,
-            train=sparse_train,
-            valid=valid,
-            test=test,
-        )
+                sparse_train = sparsity_function(
+                    interactions=train,
+                    retention=retention,
+                    seed=SEED,
+                )
 
-        print(f"Saved to: {output_dir}")
-        print(
-            f"Training interactions: {len(sparse_train):,}"
-        )
+            else:
+
+                sparse_train = sparsity_function(
+                    interactions=train,
+                    retention=retention,
+                )
+
+            output_dir = (
+                OUTPUT_ROOT
+                / scenario
+                / level
+            )
+
+            save_dataset(
+                output_dir=output_dir,
+                train=sparse_train,
+                valid=valid,
+                test=test,
+            )
+
+            print(f"Saved to: {output_dir}")
+            print(
+                f"Training interactions: {len(sparse_train):,}"
+            )
 
 
 # ==========================================================
@@ -232,8 +257,8 @@ def main() -> None:
 
     train, valid, test = load_baseline_dataset()
 
-    print("\nTraining columns:")
-    print(train.columns.tolist())
+    #print("\nTraining columns:")
+    #print(train.columns.tolist())
 
     print_summary(
         train,
@@ -241,7 +266,7 @@ def main() -> None:
         test,
     )
 
-    generate_global_datasets(
+    generate_datasets(
         train,
         valid,
         test,

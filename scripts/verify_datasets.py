@@ -32,13 +32,18 @@ BASELINE_DIR = (
     / "baseline"
 )
 
-GLOBAL_DIR = (
+DATASET_ROOT = (
     PROJECT_ROOT
     / "data"
     / "recbole"
     / "movielens"
-    / "global"
 )
+
+SCENARIOS = [
+    "global",
+    "recent",
+    "early",
+]
 
 RETENTION_LEVELS = [
     "100",
@@ -80,17 +85,24 @@ def verify_file(filepath: Path) -> None:
 
 
 # ==========================================================
-# Main Verification
+# Verification
 # ==========================================================
 
-def verify_dataset(level: str,
-                   baseline_valid: pd.DataFrame,
-                   baseline_test: pd.DataFrame) -> None:
+def verify_dataset(
+    scenario: str,
+    level: str,
+    baseline_valid: pd.DataFrame,
+    baseline_test: pd.DataFrame,
+) -> None:
 
-    dataset_dir = GLOBAL_DIR / level
+    dataset_dir = (
+        DATASET_ROOT
+        / scenario
+        / level
+    )
 
     print("\n" + "=" * 60)
-    print(f"Global {level}%")
+    print(f"{scenario.upper()} - {level}%")
     print("=" * 60)
 
     verify_directory(dataset_dir)
@@ -111,22 +123,37 @@ def verify_dataset(level: str,
     print(f"Valid interactions : {len(valid):,}")
     print(f"Test interactions  : {len(test):,}")
 
+    # ------------------------------------------------------
+    # Validation set
+    # ------------------------------------------------------
+
     if valid.equals(baseline_valid):
         print("Validation set     : PASS")
     else:
         print("Validation set     : FAIL")
+
+    # ------------------------------------------------------
+    # Test set
+    # ------------------------------------------------------
 
     if test.equals(baseline_test):
         print("Test set           : PASS")
     else:
         print("Test set           : FAIL")
 
+    # ------------------------------------------------------
+    # User interactions
+    # ------------------------------------------------------
+
     user_column = next(
-        c for c in train.columns
-        if c.startswith("user_id")
+        column
+        for column in train.columns
+        if column.startswith("user_id")
     )
 
-    user_counts = train.groupby(user_column).size()
+    user_counts = train.groupby(
+        user_column
+    ).size()
 
     if (user_counts == 0).any():
         print("User interactions  : FAIL")
@@ -152,12 +179,16 @@ def main():
         BASELINE_DIR / "movielens.test.inter"
     )
 
-    for level in RETENTION_LEVELS:
-        verify_dataset(
-            level,
-            baseline_valid,
-            baseline_test,
-        )
+    for scenario in SCENARIOS:
+
+        for level in RETENTION_LEVELS:
+
+            verify_dataset(
+                scenario=scenario,
+                level=level,
+                baseline_valid=baseline_valid,
+                baseline_test=baseline_test,
+            )
 
     print("\nVerification complete.")
 
