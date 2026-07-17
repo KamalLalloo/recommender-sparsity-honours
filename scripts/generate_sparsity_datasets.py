@@ -27,6 +27,8 @@ from sparsity import (
     apply_early_profile_sparsity,
 )
 
+import json
+
 # ==========================================================
 # Project Constants
 # ==========================================================
@@ -157,6 +159,55 @@ def save_dataset(
     )
 
 
+def save_metadata(
+    output_dir: Path,
+    train: pd.DataFrame,
+    valid: pd.DataFrame,
+    test: pd.DataFrame,
+    scenario: str,
+    retention_level: str,
+    seed: int,
+) -> None:
+    """
+    Save metadata describing a generated dataset.
+    """
+
+    user_column = next(
+        column
+        for column in train.columns
+        if column.startswith("user_id")
+    )
+
+    item_column = next(
+        column
+        for column in train.columns
+        if column.startswith("item_id")
+    )
+
+    metadata = {
+        "dataset": "movielens",
+        "scenario": scenario,
+        "retention": int(retention_level),
+        "seed": seed,
+        "users": train[user_column].nunique(),
+        "items": train[item_column].nunique(),
+        "train_interactions": len(train),
+        "validation_interactions": len(valid),
+        "test_interactions": len(test),
+    }
+
+    with open(
+        output_dir / "metadata.json",
+        "w",
+        encoding="utf-8",
+    ) as file:
+
+        json.dump(
+            metadata,
+            file,
+            indent=4,
+        )
+
 # ==========================================================
 # Summary
 # ==========================================================
@@ -237,6 +288,16 @@ def generate_datasets(
                 train=sparse_train,
                 valid=valid,
                 test=test,
+            )
+
+            save_metadata(
+                output_dir=output_dir,
+                train=sparse_train,
+                valid=valid,
+                test=test,
+                scenario=scenario,
+                retention_level=level,
+                seed=SEED,
             )
 
             print(f"Saved to: {output_dir}")
