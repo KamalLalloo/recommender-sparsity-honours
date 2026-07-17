@@ -1,0 +1,28 @@
+# Model
+model: MultiVAE
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# Training
+epochs: 100
+learning_rate: 0.001
+
+# Architecture
+mlp_hidden_size: [600]
+latent_dimension: 200
+
+# Regularisation
+dropout_prob: 0.5
+
+# Batch sizes
+train_batch_size: 512
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true
+
+# CPU execution
+use_gpu: false

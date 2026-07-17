@@ -1,0 +1,33 @@
+# Model
+model: BERT4Rec
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# Training
+epochs: 100
+learning_rate: 0.001
+
+# BERT4Rec uses Cross-Entropy loss
+train_neg_sample_args: ~
+
+# Transformer
+hidden_size: 64
+inner_size: 256
+n_layers: 2
+n_heads: 2
+hidden_dropout_prob: 0.2
+attn_dropout_prob: 0.2
+mask_ratio: 0.2
+
+# Batch sizes
+train_batch_size: 256
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true
+
+# CPU execution
+use_gpu: false

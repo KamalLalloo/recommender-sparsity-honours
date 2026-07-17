@@ -1,0 +1,30 @@
+# Model
+model: GRU4Rec
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# Training
+epochs: 100
+learning_rate: 0.001
+
+# GRU4Rec uses Cross-Entropy loss
+train_neg_sample_args: ~
+
+# Network
+embedding_size: 64
+hidden_size: 128
+num_layers: 1
+dropout_prob: 0.2
+
+# Batch sizes
+train_batch_size: 512
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true
+
+# CPU execution
+use_gpu: false

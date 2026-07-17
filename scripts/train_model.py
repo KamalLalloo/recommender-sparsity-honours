@@ -83,6 +83,12 @@ SUPPORTED_MODELS = {
     "itemknn": "ItemKNN",
     "bpr": "BPR",
     "ease": "EASE",
+    "neumf": "NeuMF",
+    "multivae": "MultiVAE",
+    "gru4rec": "GRU4Rec",
+    "sasrec": "SASRec",
+    "bert4rec": "BERT4Rec",
+    "lightgcn": "LightGCN",
 }
 
 

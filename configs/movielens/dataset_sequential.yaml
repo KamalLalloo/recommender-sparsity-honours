@@ -1,0 +1,11 @@
+dataset: movielens
+
+data_path: .
+
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+TIME_FIELD: timestamp
+
+field_separator: "\t"
+
+rm_dup_inter: null

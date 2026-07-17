@@ -1,0 +1,28 @@
+# Model
+model: NeuMF
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# Training
+epochs: 100
+learning_rate: 0.001
+
+# Embedding dimensions
+embedding_size: 64
+mlp_hidden_size: [64, 32, 16, 8]
+
+# Regularisation
+dropout_prob: 0.0
+
+# Batch sizes
+train_batch_size: 2048
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true
+
+# CPU execution
+use_gpu: false
