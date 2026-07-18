@@ -91,6 +91,12 @@ SUPPORTED_MODELS = {
     "lightgcn": "LightGCN",
 }
 
+SEQUENTIAL_MODELS = {
+    "GRU4Rec",
+    "SASRec",
+    "BERT4Rec",
+}
+
 
 # ==========================================================
 # Command-Line Arguments
@@ -113,13 +119,13 @@ def parse_arguments() -> argparse.Namespace:
             "on a benchmark dataset."
         )
     )
-
     parser.add_argument(
         "--model",
         required=True,
         help=(
-            "Model to run. Supported baseline models: "
-            "Pop, ItemKNN, BPR, EASE."
+            "Model to run. Supported models: "
+            + ", ".join(SUPPORTED_MODELS.values())
+            + "."
         ),
     )
 
@@ -127,8 +133,10 @@ def parse_arguments() -> argparse.Namespace:
         "--dataset-dir",
         required=True,
         help=(
-            "Directory containing movielens.train.inter, "
-            "movielens.valid.inter and movielens.test.inter."
+            "Dataset directory. General models require "
+            "movielens.train.inter, movielens.valid.inter, and "
+            "movielens.test.inter. Sequential models require "
+            "movielens.inter."
         ),
     )
 
@@ -158,25 +166,36 @@ def resolve_model_name(user_input: str) -> str:
 
 def validate_dataset_directory(
     dataset_directory: Path,
+    model_name: str,
 ) -> None:
     """
-    Validate that the dataset directory exists and contains the
-    benchmark interaction files.
+    Validate the dataset directory for the selected model type.
+
+    General recommenders use predefined benchmark split files.
+
+    Sequential recommenders use one chronological interaction
+    file, from which RecBole constructs sequences and performs
+    the configured split.
     """
 
     print("\nValidating dataset directory...")
 
     if not dataset_directory.is_dir():
         raise FileNotFoundError(
-            f"Dataset directory does not exist:\n"
+            "Dataset directory does not exist:\n"
             f"{dataset_directory}"
         )
 
-    required_files = [
-        "movielens.train.inter",
-        "movielens.valid.inter",
-        "movielens.test.inter",
-    ]
+    if model_name in SEQUENTIAL_MODELS:
+        required_files = [
+            "movielens.inter",
+        ]
+    else:
+        required_files = [
+            "movielens.train.inter",
+            "movielens.valid.inter",
+            "movielens.test.inter",
+        ]
 
     missing_files = [
         filename
@@ -195,11 +214,16 @@ def validate_dataset_directory(
             f"{missing_text}"
         )
 
-    print(
-        f"Dataset directory: "
-        f"{dataset_directory.relative_to(PROJECT_ROOT)}"
-    )
+    try:
+        relative_path = dataset_directory.relative_to(
+            PROJECT_ROOT
+        )
+    except ValueError:
+        relative_path = dataset_directory
 
+    print(f"Dataset directory: {relative_path}")
+    print(f"Dataset mode     : "
+          f"{'Sequential' if model_name in SEQUENTIAL_MODELS else 'Benchmark'}")
     print("Dataset directory validation passed.")
 
 
@@ -211,21 +235,37 @@ def validate_dataset_directory(
 
 def build_config_files(model_name: str) -> list[Path]:
     """
-    Build the list of configuration files for the selected model.
+    Build the configuration file list for the selected model.
 
-    Examples
-    --------
-    Pop      -> configs/movielens/pop.yaml
-    ItemKNN  -> configs/movielens/itemknn.yaml
-    BPR      -> configs/movielens/bpr.yaml
-    EASE     -> configs/movielens/ease.yaml
+    General models use dataset.yaml, which specifies predefined
+    benchmark files.
+
+    Sequential models use dataset_sequential.yaml, which loads
+    one chronological movielens.inter file and allows RecBole
+    to construct sequential examples.
     """
 
-    model_config_filename = f"{model_name.lower()}.yaml"
+    model_config_filename = (
+        f"{model_name.lower()}.yaml"
+    )
+
+    if model_name in SEQUENTIAL_MODELS:
+        dataset_config_filename = (
+            "dataset_sequential.yaml"
+        )
+    else:
+        dataset_config_filename = "dataset.yaml"
+
+    if model_name in SEQUENTIAL_MODELS:
+        dataset_config_filename = "dataset_sequential.yaml"
+        evaluation_config_filename = "evaluation_sequential.yaml"
+    else:
+        dataset_config_filename = "dataset.yaml"
+        evaluation_config_filename = "evaluation_general.yaml"
 
     return [
-        CONFIG_DIR / "dataset.yaml",
-        CONFIG_DIR / "evaluation.yaml",
+        CONFIG_DIR / dataset_config_filename,
+        CONFIG_DIR / evaluation_config_filename,
         CONFIG_DIR / model_config_filename,
     ]
 
@@ -644,14 +684,34 @@ def save_experiment_results(
     )
 
     # Determine experiment type and retention level from the dataset directory.
-    relative_dataset_path = dataset_directory.relative_to(PROJECT_ROOT)
+    relative_dataset_path = dataset_directory.relative_to(
+        PROJECT_ROOT
+    )
 
-    if relative_dataset_path.name == "baseline":
+    if config["model"] in SEQUENTIAL_MODELS:
+        # The current sequential dataset contains the complete
+        # chronological baseline interaction history.
         experiment_type = "Baseline"
         retention_level = 100
+
+    elif relative_dataset_path.name == "baseline":
+        experiment_type = "Baseline"
+        retention_level = 100
+
     else:
-        experiment_type = relative_dataset_path.parent.name.capitalize()
-        retention_level = int(relative_dataset_path.name)
+        experiment_type = (
+            relative_dataset_path.parent.name.capitalize()
+        )
+
+        try:
+            retention_level = int(
+                relative_dataset_path.name
+            )
+        except ValueError as error:
+            raise ValueError(
+                "Could not determine the retention level from "
+                f"dataset directory: {relative_dataset_path}"
+            ) from error
 
 
     result_row = {
@@ -775,12 +835,13 @@ def main() -> None:
             PROJECT_ROOT / dataset_directory
         )
 
-    validate_dataset_directory(
-        dataset_directory
-    )
-
     model_name = resolve_model_name(
         arguments.model
+    )
+
+    validate_dataset_directory(
+        dataset_directory,
+        model_name,
     )
 
     config_files = build_config_files(
