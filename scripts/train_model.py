@@ -688,25 +688,18 @@ def save_experiment_results(
         PROJECT_ROOT
     )
 
-    if config["model"] in SEQUENTIAL_MODELS:
-        # The current sequential dataset contains the complete
-        # chronological baseline interaction history.
-        experiment_type = "Baseline"
-        retention_level = 100
+    # Determine experiment type and retention level from the dataset directory.
+    #relative_dataset_path = dataset_directory.relative_to(PROJECT_ROOT)
 
-    elif relative_dataset_path.name == "baseline":
+    if relative_dataset_path.name == "baseline":
         experiment_type = "Baseline"
         retention_level = 100
 
     else:
-        experiment_type = (
-            relative_dataset_path.parent.name.capitalize()
-        )
+        experiment_type = relative_dataset_path.parent.name.capitalize()
 
         try:
-            retention_level = int(
-                relative_dataset_path.name
-            )
+            retention_level = int(relative_dataset_path.name)
         except ValueError as error:
             raise ValueError(
                 "Could not determine the retention level from "
