@@ -186,16 +186,9 @@ def validate_dataset_directory(
             f"{dataset_directory}"
         )
 
-    if model_name in SEQUENTIAL_MODELS:
-        required_files = [
-            "movielens.inter",
-        ]
-    else:
-        required_files = [
-            "movielens.train.inter",
-            "movielens.valid.inter",
-            "movielens.test.inter",
-        ]
+    required_files = [
+        "movielens.inter",
+    ]
 
     missing_files = [
         filename
@@ -236,32 +229,12 @@ def validate_dataset_directory(
 def build_config_files(model_name: str) -> list[Path]:
     """
     Build the configuration file list for the selected model.
-
-    General models use dataset.yaml, which specifies predefined
-    benchmark files.
-
-    Sequential models use dataset_sequential.yaml, which loads
-    one chronological movielens.inter file and allows RecBole
-    to construct sequential examples.
     """
 
-    model_config_filename = (
-        f"{model_name.lower()}.yaml"
-    )
+    model_config_filename = f"{model_name.lower()}.yaml"
 
-    if model_name in SEQUENTIAL_MODELS:
-        dataset_config_filename = (
-            "dataset_sequential.yaml"
-        )
-    else:
-        dataset_config_filename = "dataset.yaml"
-
-    if model_name in SEQUENTIAL_MODELS:
-        dataset_config_filename = "dataset_sequential.yaml"
-        evaluation_config_filename = "evaluation_sequential.yaml"
-    else:
-        dataset_config_filename = "dataset.yaml"
-        evaluation_config_filename = "evaluation_general.yaml"
+    dataset_config_filename = "dataset_general_single.yaml"
+    evaluation_config_filename = "evaluation_general_single.yaml"
 
     return [
         CONFIG_DIR / dataset_config_filename,
