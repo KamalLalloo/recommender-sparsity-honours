@@ -1,6 +1,9 @@
+project_overview.md
 # ==========================================
 # Python
 # ==========================================
+
+
 
 __pycache__/
 *.py[cod]
@@ -48,6 +51,7 @@ logs/
 data/raw/
 data/processed/
 data/recbole/
+data/data/recbole_sequential
 
 # ==========================================
 # Experiment Outputs
