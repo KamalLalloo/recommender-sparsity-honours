@@ -1,38 +1,30 @@
 """
-Verify Generated Sparsity Datasets
+Verify Generated RecBole Sparsity Datasets
 
-This script verifies that the generated benchmark datasets
-are structurally correct before running experiments.
+Checks that every generated dataset:
 
-Checks
-------
-1. Dataset directories exist.
-2. Required files exist.
-3. Files can be loaded.
-4. Validation and test sets are unchanged.
-5. Every training user has at least one interaction.
+- exists
+- contains movielens.inter
+- contains metadata.json
+- loads successfully
+- matches metadata
+- every user has at least one interaction
+- each user's interactions remain chronological
+
+Example
+-------
+python scripts/verify_datasets.py
 """
 
 from pathlib import Path
+import json
 
 import pandas as pd
 
 
-# ==========================================================
-# Project Constants
-# ==========================================================
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-BASELINE_DIR = (
-    PROJECT_ROOT
-    / "data"
-    / "recbole"
-    / "movielens"
-    / "baseline"
-)
-
-DATASET_ROOT = (
+DATA_ROOT = (
     PROJECT_ROOT
     / "data"
     / "recbole"
@@ -45,7 +37,7 @@ SCENARIOS = [
     "early",
 ]
 
-RETENTION_LEVELS = [
+LEVELS = [
     "100",
     "50",
     "25",
@@ -53,144 +45,116 @@ RETENTION_LEVELS = [
 ]
 
 
-# ==========================================================
-# Utilities
-# ==========================================================
+def verify_dataset(dataset_dir: Path) -> bool:
+    """
+    Verify one generated dataset.
+    """
 
-def load_interactions(filepath: Path) -> pd.DataFrame:
-    """Load a RecBole interaction file."""
+    print(f"\nChecking {dataset_dir.relative_to(DATA_ROOT)}")
 
-    return pd.read_csv(
-        filepath,
-        sep="\t",
-    )
+    inter_file = dataset_dir / "movielens.inter"
+    metadata_file = dataset_dir / "metadata.json"
 
+    if not inter_file.exists():
+        print("  ✗ Missing movielens.inter")
+        return False
 
-def verify_directory(directory: Path) -> None:
-    """Ensure a dataset directory exists."""
+    if not metadata_file.exists():
+        print("  ✗ Missing metadata.json")
+        return False
 
-    if not directory.exists():
-        raise FileNotFoundError(
-            f"Missing directory:\n{directory}"
+    try:
+        df = pd.read_csv(
+            inter_file,
+            sep="\t",
         )
+    except Exception as e:
+        print(f"  ✗ Failed to load dataset: {e}")
+        return False
 
+    with open(
+        metadata_file,
+        "r",
+        encoding="utf-8",
+    ) as file:
+        metadata = json.load(file)
 
-def verify_file(filepath: Path) -> None:
-    """Ensure a dataset file exists."""
+    expected = metadata["total_interactions"]
 
-    if not filepath.exists():
-        raise FileNotFoundError(
-            f"Missing file:\n{filepath}"
+    if len(df) != expected:
+        print(
+            f"  ✗ Interaction count mismatch "
+            f"({len(df):,} != {expected:,})"
         )
+        return False
 
-
-# ==========================================================
-# Verification
-# ==========================================================
-
-def verify_dataset(
-    scenario: str,
-    level: str,
-    baseline_valid: pd.DataFrame,
-    baseline_test: pd.DataFrame,
-) -> None:
-
-    dataset_dir = (
-        DATASET_ROOT
-        / scenario
-        / level
+    user_col = next(
+        c for c in df.columns
+        if c.startswith("user_id")
     )
 
-    print("\n" + "=" * 60)
-    print(f"{scenario.upper()} - {level}%")
-    print("=" * 60)
-
-    verify_directory(dataset_dir)
-
-    train_file = dataset_dir / "movielens.train.inter"
-    valid_file = dataset_dir / "movielens.valid.inter"
-    test_file = dataset_dir / "movielens.test.inter"
-
-    verify_file(train_file)
-    verify_file(valid_file)
-    verify_file(test_file)
-
-    train = load_interactions(train_file)
-    valid = load_interactions(valid_file)
-    test = load_interactions(test_file)
-
-    print(f"Train interactions : {len(train):,}")
-    print(f"Valid interactions : {len(valid):,}")
-    print(f"Test interactions  : {len(test):,}")
-
-    # ------------------------------------------------------
-    # Validation set
-    # ------------------------------------------------------
-
-    if valid.equals(baseline_valid):
-        print("Validation set     : PASS")
-    else:
-        print("Validation set     : FAIL")
-
-    # ------------------------------------------------------
-    # Test set
-    # ------------------------------------------------------
-
-    if test.equals(baseline_test):
-        print("Test set           : PASS")
-    else:
-        print("Test set           : FAIL")
-
-    # ------------------------------------------------------
-    # User interactions
-    # ------------------------------------------------------
-
-    user_column = next(
-        column
-        for column in train.columns
-        if column.startswith("user_id")
+    item_col = next(
+        c for c in df.columns
+        if c.startswith("item_id")
     )
 
-    user_counts = train.groupby(
-        user_column
-    ).size()
+    time_col = next(
+        c for c in df.columns
+        if c.startswith("timestamp")
+    )
 
-    if (user_counts == 0).any():
-        print("User interactions  : FAIL")
-    else:
-        print("User interactions  : PASS")
+    # Every user has interactions
+    counts = df.groupby(user_col).size()
 
+    if (counts < 1).any():
+        print("  ✗ User with zero interactions")
+        return False
 
-# ==========================================================
-# Main
-# ==========================================================
+    # Histories remain chronological
+    for _, history in df.groupby(user_col):
+
+        if not history[time_col].is_monotonic_increasing:
+            print("  ✗ Non-chronological user history")
+            return False
+
+    print(f"  ✓ Users        : {df[user_col].nunique():,}")
+    print(f"  ✓ Items        : {df[item_col].nunique():,}")
+    print(f"  ✓ Interactions : {len(df):,}")
+
+    return True
+
 
 def main():
 
     print("=" * 60)
-    print("Verify Generated Datasets")
+    print("VERIFY GENERATED SPARSITY DATASETS")
     print("=" * 60)
 
-    baseline_valid = load_interactions(
-        BASELINE_DIR / "movielens.valid.inter"
-    )
-
-    baseline_test = load_interactions(
-        BASELINE_DIR / "movielens.test.inter"
-    )
+    total = 0
+    passed = 0
 
     for scenario in SCENARIOS:
+        for level in LEVELS:
 
-        for level in RETENTION_LEVELS:
-
-            verify_dataset(
-                scenario=scenario,
-                level=level,
-                baseline_valid=baseline_valid,
-                baseline_test=baseline_test,
+            dataset_dir = (
+                DATA_ROOT
+                / scenario
+                / level
             )
 
-    print("\nVerification complete.")
+            total += 1
+
+            if verify_dataset(dataset_dir):
+                passed += 1
+
+    print("\n" + "=" * 60)
+
+    if passed == total:
+        print(f"SUCCESS: {passed}/{total} datasets verified.")
+    else:
+        print(f"FAILED: {passed}/{total} datasets verified.")
+
+    print("=" * 60)
 
 
 if __name__ == "__main__":

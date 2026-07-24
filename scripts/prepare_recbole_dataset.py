@@ -1,19 +1,25 @@
 """
-Prepare MovieLens-1M Dataset for RecBole
+Prepare MovieLens Sequential Dataset for RecBole
 
-This script converts the processed MovieLens datasets into the
-interaction file format required by RecBole.
+This script converts the chronologically ordered MovieLens dataset
+into the interaction format required by RecBole's sequential
+recommendation models.
+
+Unlike the benchmark datasets used by the general recommenders,
+this script exports a single interaction file. RecBole's
+SequentialDataset performs the sequence generation internally.
 
 Pipeline
 --------
-1. Load processed train/validation/test datasets
-2. Validate datasets
+1. Load the chronological interaction dataset
+2. Validate the dataset
 3. Rename columns to RecBole format
-4. Export .inter files
+4. Export movielens.inter
 5. Print export summary
 """
 
 from pathlib import Path
+
 import pandas as pd
 
 
@@ -30,56 +36,68 @@ PROCESSED_DATA = (
     / "movielens"
 )
 
-RECBole_DATA = (
+OUTPUT_DIR = (
     PROJECT_ROOT
     / "data"
     / "recbole"
     / "movielens"
+    / "baseline"
 )
 
-RECBole_DATA.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 
 # ==========================================================
-# Load Datasets
+# Load Dataset
 # ==========================================================
 
-def load_dataset(filename: str) -> pd.DataFrame:
-    """Load a processed dataset."""
+def load_dataset() -> pd.DataFrame:
+    """
+    Load the chronologically ordered interaction dataset.
+    """
 
-    return pd.read_csv(PROCESSED_DATA / filename)
+    return pd.read_csv(
+        PROCESSED_DATA / "03_temporal_interactions.csv"
+    )
 
 
 # ==========================================================
 # Validation
 # ==========================================================
 
-def validate_dataset(df: pd.DataFrame, name: str) -> None:
-    """Validate a processed dataset."""
+def validate_dataset(df: pd.DataFrame) -> None:
+    """
+    Validate the temporal interaction dataset.
+    """
 
-    print(f"\nValidating {name} dataset...")
+    print("\nValidating dataset...")
 
-    assert not df.empty, f"{name} dataset is empty."
+    assert not df.empty, (
+        "Dataset is empty."
+    )
 
     assert df.isnull().sum().sum() == 0, (
-        f"{name} contains missing values."
+        "Dataset contains missing values."
     )
 
     assert df.duplicated().sum() == 0, (
-        f"{name} contains duplicate rows."
+        "Dataset contains duplicate rows."
     )
 
     required_columns = [
         "user_id",
         "movie_id",
-        "timestamp"
+        "timestamp",
     ]
 
     assert list(df.columns) == required_columns, (
-        f"{name} has unexpected columns."
+        "Dataset contains unexpected columns."
     )
 
-    print(f"{name} dataset validation passed.")
+    print("Dataset validation passed.")
 
 
 # ==========================================================
@@ -88,123 +106,86 @@ def validate_dataset(df: pd.DataFrame, name: str) -> None:
 
 def convert_to_recbole(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Rename columns to RecBole field names.
+    Rename columns to the field names expected by RecBole.
     """
 
-    return df.rename(columns={
-
-        "user_id": "user_id:token",
-
-        "movie_id": "item_id:token",
-
-        "timestamp": "timestamp:float"
-
-    })
+    return df.rename(
+        columns={
+            "user_id": "user_id:token",
+            "movie_id": "item_id:token",
+            "timestamp": "timestamp:float",
+        }
+    )
 
 
 # ==========================================================
 # Export Dataset
 # ==========================================================
 
-def export_inter_file(
-    df: pd.DataFrame,
-    filename: str
-) -> None:
+def export_dataset(df: pd.DataFrame) -> None:
     """
-    Export a RecBole interaction file.
+    Export the sequential interaction dataset.
     """
 
-    output = RECBole_DATA / filename
+    output_file = OUTPUT_DIR / "movielens.inter"
 
     df.to_csv(
-        output,
+        output_file,
         sep="\t",
-        index=False
+        index=False,
     )
 
-    print(f"Saved: {output}")
+    print(f"\nSaved: {output_file}")
 
 
 # ==========================================================
 # Summary
 # ==========================================================
 
-def print_summary(
-    train: pd.DataFrame,
-    validation: pd.DataFrame,
-    test: pd.DataFrame
-) -> None:
+def print_summary(df: pd.DataFrame) -> None:
+    """
+    Print dataset statistics.
+    """
 
     print("\nExport Summary")
     print("-" * 40)
 
-    print(f"Train rows      : {len(train):,}")
-
-    print(f"Validation rows : {len(validation):,}")
-
-    print(f"Test rows       : {len(test):,}")
-
-    print()
-
-    total = (
-        len(train)
-        + len(validation)
-        + len(test)
+    print(
+        f"Users        : {df['user_id:token'].nunique():,}"
     )
 
-    print(f"Total interactions: {total:,}")
+    print(
+        f"Items        : {df['item_id:token'].nunique():,}"
+    )
+
+    print(
+        f"Interactions : {len(df):,}"
+    )
 
 
 # ==========================================================
 # Main
 # ==========================================================
 
-def main():
+def main() -> None:
 
     print("=" * 60)
-    print("Preparing MovieLens Dataset for RecBole")
+    print("Preparing Sequential MovieLens Dataset for RecBole")
     print("=" * 60)
 
-    train = load_dataset("train.csv")
+    dataset = load_dataset()
 
-    validation = load_dataset("validation.csv")
+    validate_dataset(dataset)
 
-    test = load_dataset("test.csv")
+    dataset = convert_to_recbole(dataset)
 
-    validate_dataset(train, "Train")
+    export_dataset(dataset)
 
-    validate_dataset(validation, "Validation")
+    print_summary(dataset)
 
-    validate_dataset(test, "Test")
-
-    train = convert_to_recbole(train)
-
-    validation = convert_to_recbole(validation)
-
-    test = convert_to_recbole(test)
-
-    export_inter_file(
-        train,
-        "movielens.train.inter"
+    print(
+        "\nSequential dataset preparation completed successfully."
     )
-
-    export_inter_file(
-        validation,
-        "movielens.valid.inter"
-    )
-
-    export_inter_file(
-        test,
-        "movielens.test.inter"
-    )
-
-    print_summary(
-        train,
-        validation,
-        test
-    )
-
-    print("\nRecBole dataset preparation completed successfully.")
 
 
 if __name__ == "__main__":

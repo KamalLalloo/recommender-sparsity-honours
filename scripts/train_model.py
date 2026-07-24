@@ -133,10 +133,8 @@ def parse_arguments() -> argparse.Namespace:
         "--dataset-dir",
         required=True,
         help=(
-            "Dataset directory. General models require "
-            "movielens.train.inter, movielens.valid.inter, and "
-            "movielens.test.inter. Sequential models require "
-            "movielens.inter."
+            "Dataset directory containing movielens.inter, "
+            "such as baseline, global/50, recent/25, or early/10."
         ),
     )
 
@@ -215,8 +213,7 @@ def validate_dataset_directory(
         relative_path = dataset_directory
 
     print(f"Dataset directory: {relative_path}")
-    print(f"Dataset mode     : "
-          f"{'Sequential' if model_name in SEQUENTIAL_MODELS else 'Benchmark'}")
+    print("Dataset format   : Unified interaction file")
     print("Dataset directory validation passed.")
 
 
@@ -233,12 +230,9 @@ def build_config_files(model_name: str) -> list[Path]:
 
     model_config_filename = f"{model_name.lower()}.yaml"
 
-    dataset_config_filename = "dataset_general_single.yaml"
-    evaluation_config_filename = "evaluation_general_single.yaml"
-
     return [
-        CONFIG_DIR / dataset_config_filename,
-        CONFIG_DIR / evaluation_config_filename,
+        CONFIG_DIR / "dataset.yaml",
+        CONFIG_DIR / "evaluation.yaml",
         CONFIG_DIR / model_config_filename,
     ]
 

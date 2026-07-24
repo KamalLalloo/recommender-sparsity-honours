@@ -1,50 +1,20 @@
-# ==========================================================
-# Dataset Configuration
-#
-# NOTE:
-# The data_path value below is only a placeholder.
-# It is overridden at runtime by train_model.py using the
-# --dataset-dir command-line argument.
-# ==========================================================
+# Unified MovieLens interaction dataset
 
-# Dataset name
 dataset: movielens
 
-# Placeholder dataset path.
-# train_model.py will replace this with the selected dataset
-# directory (e.g. baseline, global/50, recent/25, etc.).
+# Overridden by train_model.py at runtime
 data_path: .
-
-# ==========================================================
-# Field definitions
-# ==========================================================
 
 USER_ID_FIELD: user_id
 ITEM_ID_FIELD: item_id
 TIME_FIELD: timestamp
 
-# ==========================================================
-# Atomic file format
-# ==========================================================
-
 field_separator: "\t"
 
-# ==========================================================
-# Benchmark split
-#
-# The dataset already contains fixed train/validation/test
-# files generated during preprocessing.
-# ==========================================================
-
-benchmark_filename:
-  - train
-  - valid
-  - test
-
-# ==========================================================
-# Duplicate interactions
-#
-# Duplicates were already handled during preprocessing.
-# ==========================================================
+load_col:
+  inter:
+    - user_id
+    - item_id
+    - timestamp
 
 rm_dup_inter: null
