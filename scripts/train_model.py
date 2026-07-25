@@ -1,45 +1,3 @@
-"""
-Train and Evaluate a RecBole Recommender Model
-
-This script runs a complete RecBole experiment using the
-predefined MovieLens train, validation, and test files.
-
-The model is selected through a command-line argument.
-
-Examples
---------
-python scripts/train_model.py ^
-    --model Pop ^
-    --dataset-dir data/recbole/movielens/baseline
-
-python scripts/train_model.py ^
-    --model ItemKNN ^
-    --dataset-dir data/recbole/movielens/baseline
-
-python scripts/train_model.py ^
-    --model BPR ^
-    --dataset-dir data/recbole/movielens/baseline
-
-python scripts/train_model.py ^
-    --model EASE ^
-    --dataset-dir data/recbole/movielens/baseline
-
-Pipeline
---------
-1. Parse command-line arguments
-2. Locate and validate configuration files
-3. Load the RecBole configuration
-4. Initialise reproducibility settings
-5. Create the RecBole dataset
-6. Create train, validation, and test DataLoaders
-7. Initialise the selected recommendation model
-8. Initialise the appropriate RecBole trainer
-9. Fit the model
-10. Evaluate the model on the test set
-11. Display validation and test metrics
-12. Save the experiment results to CSV
-"""
-
 import argparse
 import csv
 from datetime import datetime
@@ -135,6 +93,16 @@ def parse_arguments() -> argparse.Namespace:
         help=(
             "Dataset directory containing movielens.inter, "
             "such as baseline, global/50, recent/25, or early/10."
+        ),
+    )
+
+    parser.add_argument(
+        "--run-type",
+        choices=["development", "final"],
+        default="development",
+        help=(
+            "Whether this is a development/test run or a final "
+            "experiment run. Defaults to development."
         ),
     )
 
@@ -616,6 +584,7 @@ def convert_metric_values(metrics) -> dict:
 def save_experiment_results(
     config: Config,
     dataset_directory: Path,
+    run_type,
     best_valid_score,
     best_valid_result,
     test_result,
@@ -714,6 +683,7 @@ def save_experiment_results(
             training_time + evaluation_time,
             6,
         ),
+        "run_type": run_type,
     }
 
     for metric_name, metric_value in validation_metrics.items():
@@ -809,7 +779,7 @@ def main() -> None:
     )
 
     print("=" * 60)
-    print("RecBole Baseline Experiment")
+    print("RecBole Experiment")
     print("=" * 60)
 
     print(f"Project root : {PROJECT_ROOT}")
@@ -903,6 +873,7 @@ def main() -> None:
     save_experiment_results(
         config,
         dataset_directory,
+        arguments.run_type,
         best_valid_score,
         best_valid_result,
         test_result,

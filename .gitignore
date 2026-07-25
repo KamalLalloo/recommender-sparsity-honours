@@ -59,6 +59,7 @@ data/recbole_test
 # ==========================================
 
 results/raw/
+results/processed/
 models/checkpoints/
 models/saved/
 
