@@ -440,7 +440,7 @@ def train_recommender(
     best_valid_score, best_valid_result = trainer.fit(
         train_data,
         valid_data,
-        saved=False,
+        saved=True,
         show_progress=config["show_progress"],
     )
 
@@ -473,7 +473,7 @@ def evaluate_recommender(
 
     test_result = trainer.evaluate(
         test_data,
-        load_best_model=False,
+        load_best_model=True,
         show_progress=config["show_progress"],
     )
 
