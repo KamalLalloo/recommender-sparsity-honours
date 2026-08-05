@@ -1,24 +1,37 @@
 """
 Process Raw Experiment Results
 
-This script converts the append-only raw experiment log into
-clean, dataset-specific result files.
+This script converts the append-only raw experiment log into clean,
+dataset-specific and scenario-specific result files.
 
 Processing steps
 ----------------
-1. Load results/raw/experiment_runs.csv
+1. Load results/raw/experiment_results.csv
 2. Validate the required columns
-3. Keep only rows where run_type == "final"
-4. Normalize text values and dataset paths
-5. Remove duplicate experiment runs
-6. Keep the most recent run for each experiment configuration
+3. Normalize timestamps, labels, paths, and numeric values
+4. Keep only rows where run_type == "final"
+5. Remove duplicate experiment configurations
+6. Keep the most recent final run for each configuration
 7. Sort the results consistently
-8. Write separate processed files for each dataset
+8. Write complete and scenario-specific files for each dataset
 
-Outputs
--------
-results/processed/movielens_results.csv
-results/processed/amazon_results.csv
+Output structure
+----------------
+results/
+└── processed/
+    ├── removed_duplicates.csv
+    ├── movielens/
+    │   ├── all_final_results.csv
+    │   ├── baseline_results.csv
+    │   ├── global_results.csv
+    │   ├── recent_results.csv
+    │   └── early_results.csv
+    └── amazon/
+        ├── all_final_results.csv
+        ├── baseline_results.csv
+        ├── global_results.csv
+        ├── recent_results.csv
+        └── early_results.csv
 
 Duplicate definition
 --------------------
@@ -78,16 +91,23 @@ REQUIRED_COLUMNS = [
     "seed",
 ]
 
-DATASET_OUTPUT_FILES = {
-    "movielens": "movielens_results.csv",
-    "amazon": "amazon_results.csv",
-}
+SUPPORTED_DATASETS = [
+    "movielens",
+    "amazon",
+]
 
 EXPERIMENT_TYPE_ORDER = {
     "baseline": 0,
     "global": 1,
     "recent": 2,
     "early": 3,
+}
+
+SCENARIO_OUTPUT_FILES = {
+    "baseline": "baseline_results.csv",
+    "global": "global_results.csv",
+    "recent": "recent_results.csv",
+    "early": "early_results.csv",
 }
 
 
@@ -103,7 +123,7 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Process the raw experiment log into clean, "
-            "dataset-specific result files."
+            "dataset-specific and scenario-specific result files."
         )
     )
 
@@ -126,6 +146,21 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     return parser.parse_args()
+
+
+# ==========================================================
+# Path Helpers
+# ==========================================================
+
+def display_path(path: Path) -> str:
+    """
+    Return a readable project-relative path when possible.
+    """
+
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
 
 
 # ==========================================================
@@ -206,6 +241,50 @@ def validate_missing_values(
         )
 
 
+def validate_normalized_values(
+    results: pd.DataFrame,
+) -> None:
+    """
+    Validate normalized run types and experiment types.
+    """
+
+    valid_run_types = {
+        "development",
+        "final",
+    }
+
+    invalid_run_types = sorted(
+        set(results["run_type"]) - valid_run_types
+    )
+
+    if invalid_run_types:
+        invalid_text = ", ".join(invalid_run_types)
+
+        raise ValueError(
+            "Unexpected run_type values were found:\n"
+            f"{invalid_text}"
+        )
+
+    valid_experiment_types = set(
+        EXPERIMENT_TYPE_ORDER
+    )
+
+    invalid_experiment_types = sorted(
+        set(results["experiment_type"])
+        - valid_experiment_types
+    )
+
+    if invalid_experiment_types:
+        invalid_text = ", ".join(
+            invalid_experiment_types
+        )
+
+        raise ValueError(
+            "Unexpected experiment_type values were found:\n"
+            f"{invalid_text}"
+        )
+
+
 # ==========================================================
 # Data Cleaning
 # ==========================================================
@@ -214,7 +293,7 @@ def normalize_results(
     results: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Normalize timestamps, labels, model names, paths, and seeds.
+    Normalize timestamps, labels, paths, and numeric values.
     """
 
     cleaned = results.copy()
@@ -311,14 +390,17 @@ def remove_duplicate_experiments(
         ~duplicate_mask
     ].copy()
 
-    return deduplicated_results, removed_duplicates
+    return (
+        deduplicated_results,
+        removed_duplicates,
+    )
 
 
 def sort_processed_results(
     results: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Sort results into a stable, readable experiment order.
+    Sort results into a stable and readable experiment order.
     """
 
     sorted_results = results.copy()
@@ -327,22 +409,23 @@ def sort_processed_results(
         sorted_results["experiment_type"]
         .map(EXPERIMENT_TYPE_ORDER)
         .fillna(999)
+        .astype(int)
     )
 
     sorted_results = sorted_results.sort_values(
         by=[
             "dataset",
             "_experiment_order",
-            "experiment_type",
             "retention_level",
             "model",
             "seed",
+            "timestamp",
         ],
         ascending=[
             True,
             True,
-            True,
             False,
+            True,
             True,
             True,
         ],
@@ -379,9 +462,10 @@ def format_output_values(
 def write_dataset_results(
     results: pd.DataFrame,
     output_directory: Path,
-) -> dict[str, int]:
+) -> dict[str, dict[str, int]]:
     """
-    Write one processed CSV for each supported dataset.
+    Write complete and scenario-specific CSV files for each
+    supported dataset.
     """
 
     output_directory.mkdir(
@@ -389,28 +473,74 @@ def write_dataset_results(
         exist_ok=True,
     )
 
-    written_counts = {}
+    written_counts: dict[
+        str,
+        dict[str, int],
+    ] = {}
 
-    for dataset_name, filename in DATASET_OUTPUT_FILES.items():
+    for dataset_name in SUPPORTED_DATASETS:
+        dataset_output_directory = (
+            output_directory
+            / dataset_name
+        )
+
+        dataset_output_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         dataset_results = results[
             results["dataset"] == dataset_name
         ].copy()
 
-        output_file = output_directory / filename
+        written_counts[dataset_name] = {}
+
+        all_results_file = (
+            dataset_output_directory
+            / "all_final_results.csv"
+        )
 
         dataset_results.to_csv(
-            output_file,
+            all_results_file,
             index=False,
         )
 
-        written_counts[dataset_name] = len(
-            dataset_results
-        )
+        written_counts[dataset_name][
+            "all"
+        ] = len(dataset_results)
 
         print(
             f"Wrote {len(dataset_results):,} rows to "
-            f"{output_file.relative_to(PROJECT_ROOT)}"
+            f"{display_path(all_results_file)}"
         )
+
+        for (
+            experiment_type,
+            filename,
+        ) in SCENARIO_OUTPUT_FILES.items():
+            scenario_results = dataset_results[
+                dataset_results["experiment_type"]
+                == experiment_type
+            ].copy()
+
+            scenario_file = (
+                dataset_output_directory
+                / filename
+            )
+
+            scenario_results.to_csv(
+                scenario_file,
+                index=False,
+            )
+
+            written_counts[dataset_name][
+                experiment_type
+            ] = len(scenario_results)
+
+            print(
+                f"Wrote {len(scenario_results):,} rows to "
+                f"{display_path(scenario_file)}"
+            )
 
     return written_counts
 
@@ -420,9 +550,9 @@ def write_removed_duplicates(
     output_directory: Path,
 ) -> None:
     """
-    Save removed duplicate runs for inspection.
+    Save removed duplicate final runs for inspection.
 
-    The file is only created when duplicates were found.
+    The file is removed when no duplicate final runs exist.
     """
 
     duplicate_file = (
@@ -434,7 +564,9 @@ def write_removed_duplicates(
         if duplicate_file.exists():
             duplicate_file.unlink()
 
-        print("No duplicate final experiments were found.")
+        print(
+            "No duplicate final experiments were found."
+        )
         return
 
     formatted_duplicates = format_output_values(
@@ -448,7 +580,7 @@ def write_removed_duplicates(
 
     print(
         f"Saved {len(duplicates):,} removed duplicate runs to "
-        f"{duplicate_file.relative_to(PROJECT_ROOT)}"
+        f"{display_path(duplicate_file)}"
     )
 
 
@@ -460,14 +592,14 @@ def print_duplicate_summary(
     duplicates: pd.DataFrame,
 ) -> None:
     """
-    Display duplicate experiment keys that were removed.
+    Display duplicate experiment rows that were removed.
     """
 
     if duplicates.empty:
         return
 
     print("\nRemoved duplicate experiment runs")
-    print("-" * 60)
+    print("-" * 70)
 
     display_columns = [
         "timestamp",
@@ -489,7 +621,7 @@ def print_processing_summary(
     final_count: int,
     processed_count: int,
     duplicate_count: int,
-    written_counts: dict[str, int],
+    written_counts: dict[str, dict[str, int]],
 ) -> None:
     """
     Print a summary of the processing operation.
@@ -504,11 +636,22 @@ def print_processing_summary(
     print(f"Duplicates removed    : {duplicate_count:,}")
     print(f"Processed runs kept   : {processed_count:,}")
 
-    for dataset_name, count in written_counts.items():
+    for dataset_name, counts in written_counts.items():
         print(
-            f"{dataset_name.capitalize():<22}: "
-            f"{count:,}"
+            f"\n{dataset_name.capitalize()} results"
         )
+        print("-" * 30)
+
+        print(
+            f"{'All final':<18}: "
+            f"{counts['all']:,}"
+        )
+
+        for experiment_type in EXPERIMENT_TYPE_ORDER:
+            print(
+                f"{experiment_type.capitalize():<18}: "
+                f"{counts[experiment_type]:,}"
+            )
 
 
 # ==========================================================
@@ -522,39 +665,63 @@ def main() -> None:
 
     arguments = parse_arguments()
 
-    input_file = Path(arguments.input_file)
-    output_directory = Path(arguments.output_dir)
+    input_file = Path(
+        arguments.input_file
+    ).expanduser()
+
+    output_directory = Path(
+        arguments.output_dir
+    ).expanduser()
 
     if not input_file.is_absolute():
-        input_file = PROJECT_ROOT / input_file
+        input_file = (
+            PROJECT_ROOT
+            / input_file
+        )
 
     if not output_directory.is_absolute():
         output_directory = (
-            PROJECT_ROOT / output_directory
+            PROJECT_ROOT
+            / output_directory
         )
+
+    input_file = input_file.resolve()
+    output_directory = output_directory.resolve()
 
     print("=" * 60)
     print("Processing Experiment Results")
     print("=" * 60)
 
     print(
-        f"Input file : "
-        f"{input_file.relative_to(PROJECT_ROOT)}"
+        f"Input file : {display_path(input_file)}"
     )
+
     print(
-        f"Output dir : "
-        f"{output_directory.relative_to(PROJECT_ROOT)}"
+        f"Output dir : {display_path(output_directory)}"
     )
 
-    validate_input_file(input_file)
+    validate_input_file(
+        input_file
+    )
 
-    raw_results = pd.read_csv(input_file)
+    raw_results = pd.read_csv(
+        input_file
+    )
 
-    validate_required_columns(raw_results)
-    validate_missing_values(raw_results)
+    validate_required_columns(
+        raw_results
+    )
+
+    validate_missing_values(
+        raw_results
+    )
 
     normalized_results = normalize_results(
         raw_results
+    )
+
+    validate_normalized_values(
+        normalized_results
     )
 
     final_results = keep_final_runs(
@@ -579,12 +746,12 @@ def main() -> None:
         deduplicated_results
     )
 
-    processed_results = format_output_values(
+    formatted_results = format_output_values(
         processed_results
     )
 
     written_counts = write_dataset_results(
-        processed_results,
+        formatted_results,
         output_directory,
     )
 
@@ -605,7 +772,9 @@ def main() -> None:
         written_counts=written_counts,
     )
 
-    print("\nExperiment results processed successfully.")
+    print(
+        "\nExperiment results processed successfully."
+    )
 
 
 if __name__ == "__main__":
