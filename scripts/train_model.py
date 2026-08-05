@@ -49,13 +49,6 @@ SUPPORTED_MODELS = {
     "lightgcn": "LightGCN",
 }
 
-SEQUENTIAL_MODELS = {
-    "GRU4Rec",
-    "SASRec",
-    "BERT4Rec",
-}
-
-
 # ==========================================================
 # Command-Line Arguments
 # ==========================================================
@@ -106,6 +99,15 @@ def parse_arguments() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        help=(
+            "Request CUDA execution. If omitted, the experiment "
+            "must run on the CPU."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -132,16 +134,9 @@ def resolve_model_name(user_input: str) -> str:
 
 def validate_dataset_directory(
     dataset_directory: Path,
-    model_name: str,
 ) -> None:
     """
-    Validate the dataset directory for the selected model type.
-
-    General recommenders use predefined benchmark split files.
-
-    Sequential recommenders use one chronological interaction
-    file, from which RecBole constructs sequences and performs
-    the configured split.
+    Validate the unified RecBole dataset directory.
     """
 
     print("\nValidating dataset directory...")
@@ -243,6 +238,7 @@ def create_config(
     model_name: str,
     config_files: list[Path],
     dataset_directory: Path,
+    use_gpu: bool,
 ) -> Config:
     """
     Create the RecBole configuration object.
@@ -257,6 +253,9 @@ def create_config(
             str(path)
             for path in config_files
         ],
+        config_dict={
+            "use_gpu": use_gpu,
+        },
     )
 
     # Override the placeholder data_path from dataset.yaml
@@ -273,7 +272,7 @@ def create_config(
 
 def create_recbole_dataset(config: Config):
     """
-    Create the RecBole dataset from the benchmark files.
+    Create the RecBole dataset from the unified interaction file.
     """
 
     print("\nCreating RecBole dataset...")
@@ -295,13 +294,9 @@ def prepare_dataloaders(config: Config, dataset):
     """
     Create train, validation, and test DataLoaders.
 
-    Because benchmark_filename is configured, RecBole uses:
-        movielens.train.inter
-        movielens.valid.inter
-        movielens.test.inter
-
-    RecBole does not recreate the data split here. It loads the
-    three split files that were generated during preprocessing.
+    The current pipeline uses one unified movielens.inter file.
+    RecBole applies the configured chronological LS:
+    valid_and_test split using sequence_order as TIME_FIELD.
     """
 
     print(
@@ -397,8 +392,8 @@ def train_recommender(
     """
     Fit the model and evaluate it on the validation set.
 
-    saved=False is currently used because baseline pipeline
-    validation does not require model checkpoints.
+    saved=True stores RecBole's best checkpoint so test
+    evaluation can load the best validation model.
     """
 
     print("\nStarting model training...")
@@ -497,6 +492,7 @@ def print_experiment_summary(
     test_result,
     training_time: float,
     evaluation_time: float,
+    use_gpu_requested: bool,
 ) -> None:
     """
     Print the final experiment summary.
@@ -510,8 +506,9 @@ def print_experiment_summary(
     print(
     f"Dataset path  : "
     f"{dataset_directory.relative_to(PROJECT_ROOT)}"
-)
+    )
     print(f"Model         : {config['model']}")
+    print(f"GPU requested : {use_gpu_requested}")
     print(f"Device        : {config['device']}")
     print(f"Seed          : {config['seed']}")
     print(f"Valid metric  : {config['valid_metric']}")
@@ -585,6 +582,7 @@ def save_experiment_results(
     config: Config,
     dataset_directory: Path,
     run_type,
+    use_gpu_requested: bool,
     best_valid_score,
     best_valid_result,
     test_result,
@@ -624,9 +622,6 @@ def save_experiment_results(
         PROJECT_ROOT
     )
 
-    # Determine experiment type and retention level from the dataset directory.
-    #relative_dataset_path = dataset_directory.relative_to(PROJECT_ROOT)
-
     if relative_dataset_path.name == "baseline":
         experiment_type = "Baseline"
         retention_level = 100
@@ -664,6 +659,8 @@ def save_experiment_results(
         "seed": int(config["seed"]),
 
         "device": str(config["device"]),
+
+        "use_gpu_requested": bool(use_gpu_requested),
 
         "valid_metric": str(config["valid_metric"]),
 
@@ -713,7 +710,7 @@ def save_experiment_results(
 
         if existing_fieldnames != list(result_row.keys()):
             raise ValueError(
-                "The existing baseline_results.csv header "
+                "The existing experiment_results.csv header "
                 "does not match the current result format. "
                 "Because the file was manually created and "
                 "should currently be empty, clear its contents "
@@ -769,10 +766,7 @@ def main() -> None:
         arguments.model
     )
 
-    validate_dataset_directory(
-        dataset_directory,
-        model_name,
-    )
+    validate_dataset_directory(dataset_directory)
 
     config_files = build_config_files(
         model_name
@@ -785,6 +779,7 @@ def main() -> None:
     print(f"Project root : {PROJECT_ROOT}")
     print(f"Dataset      : {DATASET_NAME}")
     print(f"Model        : {model_name}")
+    print(f"GPU requested: {arguments.use_gpu}")
     print(
         f"Dataset dir  : "
         f"{dataset_directory.relative_to(PROJECT_ROOT)}"
@@ -797,7 +792,25 @@ def main() -> None:
         model_name,
         config_files,
         dataset_directory,
+        arguments.use_gpu,
     )
+
+    resolved_device = str(config["device"])
+
+    if arguments.use_gpu:
+        if not resolved_device.startswith("cuda"):
+            raise RuntimeError(
+                "GPU execution was requested, but RecBole "
+                f"resolved device '{resolved_device}'."
+            )
+    else:
+        if resolved_device.startswith("cuda"):
+            raise RuntimeError(
+                "CPU execution was requested, but RecBole "
+                f"resolved device '{resolved_device}'."
+            )
+
+    print(f"Resolved device: {resolved_device}")
 
     # Initialise deterministic random seeds before dataset creation.
     init_seed(
@@ -867,6 +880,7 @@ def main() -> None:
         test_result,
         training_time,
         evaluation_time,
+        arguments.use_gpu,
     )
 
     # Save results.
@@ -874,6 +888,7 @@ def main() -> None:
         config,
         dataset_directory,
         arguments.run_type,
+        arguments.use_gpu,
         best_valid_score,
         best_valid_result,
         test_result,

@@ -8,6 +8,8 @@ reproducibility: true
 # Training
 epochs: 100
 learning_rate: 0.001
+eval_step: 1
+stopping_step: 10
 
 # Embedding size
 embedding_size: 64
@@ -22,6 +24,3 @@ eval_batch_size: 4096
 # Runtime output
 state: INFO
 show_progress: true
-
-# CPU execution
-use_gpu: false

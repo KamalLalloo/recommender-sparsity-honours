@@ -91,6 +91,12 @@ REQUIRED_COLUMNS = [
     "seed",
 ]
 
+REQUIRED_METRIC_COLUMNS = [
+    "validation_ndcg@10",
+    "test_ndcg@10",
+    "test_recall@10",
+]
+
 SUPPORTED_DATASETS = [
     "movielens",
     "amazon",
@@ -194,7 +200,10 @@ def validate_required_columns(
 
     missing_columns = [
         column
-        for column in REQUIRED_COLUMNS
+        for column in (
+            REQUIRED_COLUMNS
+            + REQUIRED_METRIC_COLUMNS
+        )
         if column not in results.columns
     ]
 
@@ -219,7 +228,10 @@ def validate_missing_values(
     """
 
     missing_counts = (
-        results[REQUIRED_COLUMNS]
+        results[
+            REQUIRED_COLUMNS
+            + REQUIRED_METRIC_COLUMNS
+        ]
         .isna()
         .sum()
     )
@@ -285,6 +297,37 @@ def validate_normalized_values(
         )
 
 
+def validate_required_metrics(
+    results: pd.DataFrame,
+) -> None:
+    """
+    Validate required metric columns as numeric values in [0, 1].
+    """
+
+    for column in REQUIRED_METRIC_COLUMNS:
+        try:
+            numeric_values = pd.to_numeric(
+                results[column],
+                errors="raise",
+            )
+        except Exception as error:
+            raise ValueError(
+                f"Metric column {column} contains "
+                "non-numeric values."
+            ) from error
+
+        invalid_values = numeric_values[
+            (numeric_values < 0)
+            | (numeric_values > 1)
+        ]
+
+        if not invalid_values.empty:
+            raise ValueError(
+                f"Metric column {column} contains values "
+                "outside the inclusive [0, 1] range."
+            )
+
+
 # ==========================================================
 # Data Cleaning
 # ==========================================================
@@ -346,6 +389,12 @@ def normalize_results(
         cleaned["seed"],
         errors="raise",
     ).astype(int)
+
+    for column in REQUIRED_METRIC_COLUMNS:
+        cleaned[column] = pd.to_numeric(
+            cleaned[column],
+            errors="raise",
+        )
 
     return cleaned
 
@@ -654,6 +703,99 @@ def print_processing_summary(
             )
 
 
+def warn_expected_movielens_counts(
+    results: pd.DataFrame,
+) -> None:
+    """
+    Print non-blocking warnings for incomplete MovieLens final runs.
+    """
+
+    movielens = results[
+        results["dataset"] == "movielens"
+    ]
+
+    if movielens.empty:
+        return
+
+    expected_counts = {
+        "baseline": 10,
+        "global": 30,
+        "recent": 30,
+        "early": 30,
+    }
+
+    expected_sparse_retentions = {
+        50,
+        25,
+        10,
+    }
+
+    for seed, seed_results in movielens.groupby("seed"):
+        for experiment_type, expected_count in (
+            expected_counts.items()
+        ):
+            actual_count = len(
+                seed_results[
+                    seed_results["experiment_type"]
+                    == experiment_type
+                ]
+            )
+
+            if actual_count != expected_count:
+                print(
+                    "WARNING: MovieLens seed "
+                    f"{seed} has {actual_count} "
+                    f"{experiment_type.capitalize()} runs; "
+                    f"expected {expected_count}."
+                )
+
+        total_count = len(seed_results)
+
+        if total_count != 100:
+            print(
+                "WARNING: MovieLens seed "
+                f"{seed} has {total_count} total final runs; "
+                "expected 100."
+            )
+
+        baseline_retentions = set(
+            seed_results.loc[
+                seed_results["experiment_type"]
+                == "baseline",
+                "retention_level",
+            ]
+        )
+
+        if baseline_retentions - {100}:
+            print(
+                "WARNING: MovieLens baseline runs must use "
+                f"retention 100; found "
+                f"{sorted(baseline_retentions)}."
+            )
+
+        sparse = seed_results[
+            seed_results["experiment_type"].isin(
+                ["global", "recent", "early"]
+            )
+        ]
+
+        sparse_retentions = set(
+            sparse["retention_level"]
+        )
+
+        unexpected = (
+            sparse_retentions
+            - expected_sparse_retentions
+        )
+
+        if unexpected:
+            print(
+                "WARNING: MovieLens sparse final runs "
+                "contain unexpected retention values: "
+                f"{sorted(unexpected)}."
+            )
+
+
 # ==========================================================
 # Main
 # ==========================================================
@@ -724,6 +866,10 @@ def main() -> None:
         normalized_results
     )
 
+    validate_required_metrics(
+        normalized_results
+    )
+
     final_results = keep_final_runs(
         normalized_results
     )
@@ -753,6 +899,10 @@ def main() -> None:
     written_counts = write_dataset_results(
         formatted_results,
         output_directory,
+    )
+
+    warn_expected_movielens_counts(
+        processed_results
     )
 
     write_removed_duplicates(

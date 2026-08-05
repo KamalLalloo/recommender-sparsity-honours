@@ -61,12 +61,14 @@ EXPECTED_COLUMNS = [
     "user_id",
     "movie_id",
     "timestamp",
+    "sequence_order",
 ]
 
 RECBOLE_COLUMN_MAPPING = {
     "user_id": "user_id:token",
     "movie_id": "item_id:token",
     "timestamp": "timestamp:float",
+    "sequence_order": "sequence_order:float",
 }
 
 
@@ -137,6 +139,35 @@ def validate_dataset(
             f"{name} contains duplicate rows."
         )
 
+    if not pd.api.types.is_numeric_dtype(
+        dataframe["sequence_order"]
+    ):
+        raise ValueError(
+            f"{name} sequence_order must be numeric."
+        )
+
+    if dataframe.duplicated(
+        subset=["user_id", "sequence_order"]
+    ).any():
+        raise ValueError(
+            f"{name} contains duplicate "
+            "(user_id, sequence_order) pairs."
+        )
+
+    for user_id, history in dataframe.groupby("user_id"):
+        sequence_values = history.sort_values(
+            "sequence_order",
+            kind="mergesort",
+        )["sequence_order"].values
+
+        if not (
+            sequence_values[:-1] < sequence_values[1:]
+        ).all():
+            raise ValueError(
+                f"{name} sequence_order is not strictly "
+                f"increasing for user {user_id}."
+            )
+
 
 def validate_processed_splits(
     train: pd.DataFrame,
@@ -173,26 +204,32 @@ def validate_processed_splits(
             "Test must contain one interaction per user."
         )
 
-    max_train_times = train.groupby(
+    max_train_sequence = train.groupby(
         "user_id"
-    )["timestamp"].max()
+    )["sequence_order"].max()
 
-    validation_times = validation.set_index(
+    validation_sequence = validation.set_index(
         "user_id"
-    )["timestamp"]
+    )["sequence_order"]
 
-    test_times = test.set_index(
+    test_sequence = test.set_index(
         "user_id"
-    )["timestamp"]
+    )["sequence_order"]
 
-    if not (max_train_times <= validation_times).all():
+    if not (
+        max_train_sequence < validation_sequence
+    ).all():
         raise ValueError(
-            "Training interactions must occur before validation."
+            "Training sequence_order must be less than "
+            "validation sequence_order."
         )
 
-    if not (validation_times <= test_times).all():
+    if not (
+        validation_sequence < test_sequence
+    ).all():
         raise ValueError(
-            "Validation interactions must occur before test."
+            "Validation sequence_order must be less than "
+            "test sequence_order."
         )
 
     print("Processed split validation passed.")
@@ -217,7 +254,7 @@ def validate_generated_dataset(
         )
 
     ordered = combined.sort_values(
-        ["user_id", "timestamp"],
+        ["user_id", "sequence_order"],
         kind="mergesort",
     )
 
@@ -311,7 +348,7 @@ def combine_splits(
             ignore_index=True,
         )
         .sort_values(
-            ["user_id", "timestamp"],
+            ["user_id", "sequence_order"],
             kind="mergesort",
         )
         .reset_index(drop=True)
@@ -325,7 +362,63 @@ def convert_to_recbole(
 
     return dataframe.rename(
         columns=RECBOLE_COLUMN_MAPPING
+    )[
+        [
+            "user_id:token",
+            "item_id:token",
+            "timestamp:float",
+            "sequence_order:float",
+        ]
+    ]
+
+
+def validate_full_retention_identity(
+    scenario: str,
+    train: pd.DataFrame,
+    sparse_train: pd.DataFrame,
+    validation: pd.DataFrame,
+    test: pd.DataFrame,
+    combined: pd.DataFrame,
+) -> None:
+    """Require exact identity for 100% sparse controls."""
+
+    try:
+        pd.testing.assert_frame_equal(
+            sparse_train.reset_index(drop=True),
+            train.reset_index(drop=True),
+            check_dtype=True,
+            check_like=False,
+        )
+    except AssertionError as error:
+        raise ValueError(
+            f"{scenario}/100% sparse training data is not "
+            "identical to the original training split."
+        ) from error
+
+    expected_combined = (
+        pd.concat(
+            [train, validation, test],
+            ignore_index=True,
+        )
+        .sort_values(
+            ["user_id", "sequence_order"],
+            kind="mergesort",
+        )
+        .reset_index(drop=True)
     )
+
+    try:
+        pd.testing.assert_frame_equal(
+            combined.reset_index(drop=True),
+            expected_combined,
+            check_dtype=True,
+            check_like=False,
+        )
+    except AssertionError as error:
+        raise ValueError(
+            f"{scenario}/100% combined dataset is not "
+            "identical to the expected baseline dataset."
+        ) from error
 
 
 # ==========================================================
@@ -354,6 +447,7 @@ def save_metadata(
     output_dir: Path,
     scenario: str,
     retention_level: str,
+    original_train: pd.DataFrame,
     sparse_train: pd.DataFrame,
     validation: pd.DataFrame,
     test: pd.DataFrame,
@@ -361,17 +455,100 @@ def save_metadata(
 ) -> None:
     """Save information about one generated dataset."""
 
+    sparse_items = set(sparse_train["movie_id"])
+    validation_unseen = ~validation["movie_id"].isin(
+        sparse_items
+    )
+    test_unseen = ~test["movie_id"].isin(
+        sparse_items
+    )
+
+    evaluation_user_count = validation["user_id"].nunique()
+    actual_retention_fraction = (
+        len(sparse_train) / len(original_train)
+    )
+    validation_unseen_count = int(
+        validation_unseen.sum()
+    )
+    test_unseen_count = int(
+        test_unseen.sum()
+    )
+
     metadata = {
         "dataset": "movielens",
         "scenario": scenario,
         "retention": int(retention_level),
+        "requested_retention_percent": int(retention_level),
         "seed": SEED if scenario == "global" else None,
         "users": int(combined["user_id"].nunique()),
         "items": int(combined["movie_id"].nunique()),
+        "original_training_interactions": int(
+            len(original_train)
+        ),
         "training_interactions": int(len(sparse_train)),
+        "actual_training_retention_fraction": round(
+            actual_retention_fraction,
+            12,
+        ),
+        "actual_training_retention_percent": round(
+            actual_retention_fraction * 100,
+            6,
+        ),
+        "original_training_items": int(
+            original_train["movie_id"].nunique()
+        ),
+        "training_items": int(
+            sparse_train["movie_id"].nunique()
+        ),
         "validation_interactions": int(len(validation)),
         "test_interactions": int(len(test)),
         "total_interactions": int(len(combined)),
+        "validation_target_interactions_unseen_in_training":
+            validation_unseen_count,
+        "test_target_interactions_unseen_in_training":
+            test_unseen_count,
+        "validation_unique_items_unseen_in_training": int(
+            validation.loc[
+                validation_unseen,
+                "movie_id",
+            ].nunique()
+        ),
+        "test_unique_items_unseen_in_training": int(
+            test.loc[
+                test_unseen,
+                "movie_id",
+            ].nunique()
+        ),
+        "users_with_unseen_validation_target": int(
+            validation.loc[
+                validation_unseen,
+                "user_id",
+            ].nunique()
+        ),
+        "users_with_unseen_test_target": int(
+            test.loc[
+                test_unseen,
+                "user_id",
+            ].nunique()
+        ),
+        "percentage_users_with_unseen_validation_target":
+            round(
+                (
+                    validation_unseen_count
+                    / evaluation_user_count
+                    * 100
+                ),
+                6,
+            ),
+        "percentage_users_with_unseen_test_target":
+            round(
+                (
+                    test_unseen_count
+                    / evaluation_user_count
+                    * 100
+                ),
+                6,
+            ),
     }
 
     with open(
@@ -417,6 +594,16 @@ def generate_datasets(
                 test=test,
             )
 
+            if retention == 1.0:
+                validate_full_retention_identity(
+                    scenario=scenario,
+                    train=train,
+                    sparse_train=sparse_train,
+                    validation=validation,
+                    test=test,
+                    combined=combined,
+                )
+
             validate_generated_dataset(
                 sparse_train=sparse_train,
                 validation=validation,
@@ -441,6 +628,7 @@ def generate_datasets(
                 output_dir=output_dir,
                 scenario=scenario,
                 retention_level=level,
+                original_train=train,
                 sparse_train=sparse_train,
                 validation=validation,
                 test=test,

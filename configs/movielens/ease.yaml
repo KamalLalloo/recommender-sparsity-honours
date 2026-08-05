@@ -15,6 +15,3 @@ eval_batch_size: 4096
 # Runtime output
 state: INFO
 show_progress: true
-
-# CPU execution
-use_gpu: false
