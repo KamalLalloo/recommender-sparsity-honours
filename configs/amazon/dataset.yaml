@@ -1,0 +1,21 @@
+# Unified MovieLens interaction dataset
+
+dataset: movielens
+
+# Overridden by train_model.py at runtime
+data_path: .
+
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+TIME_FIELD: sequence_order
+
+field_separator: "\t"
+
+load_col:
+  inter:
+    - user_id
+    - item_id
+    - timestamp
+    - sequence_order
+
+rm_dup_inter: null

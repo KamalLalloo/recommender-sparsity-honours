@@ -1,0 +1,27 @@
+# Model
+model: LightGCN
+
+# Reproducibility
+seed: 2025
+reproducibility: true
+
+# Training
+epochs: 100
+learning_rate: 0.001
+eval_step: 1
+stopping_step: 10
+
+# Graph
+embedding_size: 64
+n_layers: 3
+
+# Regularisation
+reg_weight: 1e-5
+
+# Batch sizes
+train_batch_size: 2048
+eval_batch_size: 4096
+
+# Runtime output
+state: INFO
+show_progress: true

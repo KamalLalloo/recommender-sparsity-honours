@@ -1,0 +1,22 @@
+eval_args:
+  split:
+    LS: valid_and_test
+  group_by: user
+  order: TO
+  mode: full
+
+metrics:
+  - Recall
+  - NDCG
+  - Hit
+  - MRR
+
+topk:
+  - 5
+  - 10
+  - 20
+
+valid_metric: NDCG@10
+valid_metric_bigger: true
+
+metric_decimal_place: 6
