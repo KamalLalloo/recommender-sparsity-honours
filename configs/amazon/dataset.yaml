@@ -1,6 +1,6 @@
-# Unified MovieLens interaction dataset
+# Unified Amazon Video Games interaction dataset
 
-dataset: movielens
+dataset: amazon
 
 # Overridden by train_model.py at runtime
 data_path: .

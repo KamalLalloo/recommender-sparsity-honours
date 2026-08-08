@@ -21,20 +21,17 @@ from recbole.utils import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-DATASET_NAME = "movielens"
-
-CONFIG_DIR = (
-    PROJECT_ROOT
-    / "configs"
-    / DATASET_NAME
-)
-
 RESULTS_FILE = (
     PROJECT_ROOT
     / "results"
     / "raw"
     / "experiment_results.csv"
 )
+
+SUPPORTED_DATASETS = {
+    "movielens",
+    "amazon",
+}
 
 SUPPORTED_MODELS = {
     "pop": "Pop",
@@ -71,6 +68,17 @@ def parse_arguments() -> argparse.Namespace:
         )
     )
     parser.add_argument(
+        "--dataset",
+        required=True,
+        choices=sorted(SUPPORTED_DATASETS),
+        help=(
+            "Dataset to use. Supported datasets: "
+            + ", ".join(sorted(SUPPORTED_DATASETS))
+            + "."
+        ),
+    )
+
+    parser.add_argument(
         "--model",
         required=True,
         help=(
@@ -84,8 +92,9 @@ def parse_arguments() -> argparse.Namespace:
         "--dataset-dir",
         required=True,
         help=(
-            "Dataset directory containing movielens.inter, "
-            "such as baseline, global/50, recent/25, or early/10."
+            "Dataset directory containing the unified .inter file, "
+            "such as data/recbole/amazon/baseline or "
+            "data/recbole/movielens/global/50."
         ),
     )
 
@@ -134,6 +143,7 @@ def resolve_model_name(user_input: str) -> str:
 
 def validate_dataset_directory(
     dataset_directory: Path,
+    dataset_name: str,
 ) -> None:
     """
     Validate the unified RecBole dataset directory.
@@ -147,25 +157,18 @@ def validate_dataset_directory(
             f"{dataset_directory}"
         )
 
-    required_files = [
-        "movielens.inter",
-    ]
+    interaction_filename = f"{dataset_name}.inter"
 
-    missing_files = [
-        filename
-        for filename in required_files
-        if not (dataset_directory / filename).is_file()
-    ]
+    interaction_file = (
+        dataset_directory
+        / interaction_filename
+    )
 
-    if missing_files:
-        missing_text = "\n".join(
-            f"  - {filename}"
-            for filename in missing_files
-        )
-
+    if not interaction_file.is_file():
         raise FileNotFoundError(
-            "Dataset directory is missing the following files:\n"
-            f"{missing_text}"
+            "Dataset directory is missing the required "
+            "interaction file:\n"
+            f"{interaction_file}"
         )
 
     try:
@@ -176,6 +179,7 @@ def validate_dataset_directory(
         relative_path = dataset_directory
 
     print(f"Dataset directory: {relative_path}")
+    print(f"Interaction file : {interaction_filename}")
     print("Dataset format   : Unified interaction file")
     print("Dataset directory validation passed.")
 
@@ -186,17 +190,29 @@ def validate_dataset_directory(
 # Configuration
 # ==========================================================
 
-def build_config_files(model_name: str) -> list[Path]:
+def build_config_files(
+    dataset_name: str,
+    model_name: str,
+) -> list[Path]:
     """
-    Build the configuration file list for the selected model.
+    Build the configuration file list for the selected
+    dataset and model.
     """
 
-    model_config_filename = f"{model_name.lower()}.yaml"
+    config_dir = (
+        PROJECT_ROOT
+        / "configs"
+        / dataset_name
+    )
+
+    model_config_filename = (
+        f"{model_name.lower()}.yaml"
+    )
 
     return [
-        CONFIG_DIR / "dataset.yaml",
-        CONFIG_DIR / "evaluation.yaml",
-        CONFIG_DIR / model_config_filename,
+        config_dir / "dataset.yaml",
+        config_dir / "evaluation.yaml",
+        config_dir / model_config_filename,
     ]
 
 
@@ -235,6 +251,7 @@ def validate_config_files(
 
 
 def create_config(
+    dataset_name: str,
     model_name: str,
     config_files: list[Path],
     dataset_directory: Path,
@@ -248,7 +265,7 @@ def create_config(
 
     config = Config(
         model=model_name,
-        dataset=DATASET_NAME,
+        dataset=dataset_name,
         config_file_list=[
             str(path)
             for path in config_files
@@ -258,10 +275,14 @@ def create_config(
         },
     )
 
-    # Override the placeholder data_path from dataset.yaml
-    config["data_path"] = str(dataset_directory.resolve())
+    # Override the placeholder data_path from dataset.yaml.
+    config["data_path"] = str(
+        dataset_directory.resolve()
+    )
 
-    print("RecBole configuration loaded successfully.")
+    print(
+        "RecBole configuration loaded successfully."
+    )
 
     return config
 
@@ -294,9 +315,9 @@ def prepare_dataloaders(config: Config, dataset):
     """
     Create train, validation, and test DataLoaders.
 
-    The current pipeline uses one unified movielens.inter file.
-    RecBole applies the configured chronological LS:
-    valid_and_test split using sequence_order as TIME_FIELD.
+    The pipeline uses one unified interaction file.
+    RecBole applies the configured chronological leave-one-out
+    split using sequence_order as TIME_FIELD.
     """
 
     print(
@@ -753,6 +774,12 @@ def main() -> None:
 
     arguments = parse_arguments()
 
+    dataset_name = (
+        arguments.dataset
+        .strip()
+        .lower()
+    )
+
     dataset_directory = Path(
         arguments.dataset_dir
     )
@@ -762,14 +789,20 @@ def main() -> None:
             PROJECT_ROOT / dataset_directory
         )
 
+    dataset_directory = dataset_directory.resolve()
+
     model_name = resolve_model_name(
         arguments.model
     )
 
-    validate_dataset_directory(dataset_directory)
+    validate_dataset_directory(
+        dataset_directory,
+        dataset_name,
+    )
 
     config_files = build_config_files(
-        model_name
+        dataset_name,
+        model_name,
     )
 
     print("=" * 60)
@@ -777,7 +810,7 @@ def main() -> None:
     print("=" * 60)
 
     print(f"Project root : {PROJECT_ROOT}")
-    print(f"Dataset      : {DATASET_NAME}")
+    print(f"Dataset      : {dataset_name}")
     print(f"Model        : {model_name}")
     print(f"GPU requested: {arguments.use_gpu}")
     print(
@@ -789,6 +822,7 @@ def main() -> None:
     validate_config_files(config_files)
 
     config = create_config(
+        dataset_name,
         model_name,
         config_files,
         dataset_directory,
