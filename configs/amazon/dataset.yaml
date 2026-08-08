@@ -17,5 +17,7 @@ load_col:
     - item_id
     - timestamp
     - sequence_order
+  item:
+    - item_id
 
 rm_dup_inter: null
