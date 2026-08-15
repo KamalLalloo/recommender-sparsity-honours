@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import math
 import random
 
 import pandas as pd
 
 
-def _get_column_names(interactions: pd.DataFrame) -> tuple[str, str]:
+def _get_column_names(
+    interactions: pd.DataFrame,
+) -> tuple[str, str]:
     """
     Detect the user ID and deterministic ordering fields.
 
@@ -65,16 +69,56 @@ def _validate_retention(retention: float) -> None:
         )
 
 
+def _get_retained_count(
+    interaction_count: int,
+    retention: float,
+) -> int:
+    """
+    Return the retained interaction count for one user.
+
+    The frozen project rule is ceiling retention with a minimum
+    of one training interaction per user.
+    """
+
+    return max(
+        1,
+        math.ceil(
+            interaction_count * retention
+        ),
+    )
+
+
+def _get_user_seed(
+    seed: int,
+    user_id,
+) -> int:
+    """
+    Derive a stable user-specific seed.
+    """
+
+    payload = f"{seed}:{user_id}".encode("utf-8")
+    digest = hashlib.sha256(payload).digest()
+
+    return int.from_bytes(
+        digest[:8],
+        byteorder="big",
+        signed=False,
+    )
+
+
 def apply_global_sparsity(
     interactions: pd.DataFrame,
     retention: float,
     seed: int = 2025,
 ) -> pd.DataFrame:
     """
-    Apply Global Sparsity.
+    Apply random per-user interaction retention.
 
-    Randomly retain the requested percentage of each user's
-    interactions while preserving chronological order.
+    The repository keeps the historical folder name "global",
+    but the academic meaning is random per-user sparsity. For
+    each user, a stable seed reconstructs the same deterministic
+    shuffle at every retention level, so 10% is a subset of 25%,
+    25% is a subset of 50%, and 50% is a subset of baseline.
     """
 
     _validate_retention(retention)
@@ -86,48 +130,47 @@ def apply_global_sparsity(
         interactions
     )
 
-    rng = random.Random(seed)
-
     retained_groups = []
 
-    grouped = interactions.groupby(
+    for user_id, user_history in interactions.groupby(
         user_column,
         sort=False,
-    )
-
-    for _, user_history in grouped:
-
-        interaction_count = len(user_history)
-
-        retained_count = max(
-            1,
-            round(interaction_count * retention),
+    ):
+        user_history = user_history.sort_values(
+            order_column,
+            kind="mergesort",
         )
 
-        retained_indices = rng.sample(
-            list(user_history.index),
-            retained_count,
+        retained_count = _get_retained_count(
+            len(user_history),
+            retention,
         )
 
-        retained_user_history = (
-            user_history.loc[retained_indices]
+        shuffled_indices = list(user_history.index)
+
+        random.Random(
+            _get_user_seed(
+                seed,
+                user_id,
+            )
+        ).shuffle(shuffled_indices)
+
+        retained_groups.append(
+            user_history
+            .loc[
+                shuffled_indices[:retained_count]
+            ]
             .sort_values(
                 order_column,
                 kind="mergesort",
             )
         )
 
-        retained_groups.append(
-            retained_user_history
-        )
-
-    sparsified = pd.concat(
-        retained_groups,
-        ignore_index=True,
-    )
-
     return (
-        sparsified
+        pd.concat(
+            retained_groups,
+            ignore_index=True,
+        )
         .sort_values(
             [user_column, order_column],
             kind="mergesort",
@@ -141,9 +184,9 @@ def apply_recent_history_sparsity(
     retention: float,
 ) -> pd.DataFrame:
     """
-    Apply Recent History Sparsity.
+    Apply recent-history sparsity.
 
-    Retain the most recent interactions for each user.
+    Retain the most recent training interactions for each user.
     """
 
     _validate_retention(retention)
@@ -157,40 +200,29 @@ def apply_recent_history_sparsity(
 
     retained_groups = []
 
-    grouped = interactions.groupby(
+    for _, user_history in interactions.groupby(
         user_column,
         sort=False,
-    )
-
-    for _, user_history in grouped:
-
+    ):
         user_history = user_history.sort_values(
             order_column,
             kind="mergesort",
         )
 
-        interaction_count = len(user_history)
-
-        retained_count = max(
-            1,
-            round(interaction_count * retention),
-        )
-
-        retained_user_history = user_history.tail(
-            retained_count
-        )
-
         retained_groups.append(
-            retained_user_history
+            user_history.tail(
+                _get_retained_count(
+                    len(user_history),
+                    retention,
+                )
+            )
         )
-
-    sparsified = pd.concat(
-        retained_groups,
-        ignore_index=True,
-    )
 
     return (
-        sparsified
+        pd.concat(
+            retained_groups,
+            ignore_index=True,
+        )
         .sort_values(
             [user_column, order_column],
             kind="mergesort",
@@ -204,9 +236,10 @@ def apply_early_profile_sparsity(
     retention: float,
 ) -> pd.DataFrame:
     """
-    Apply Early Profile Sparsity.
+    Apply early-profile sparsity.
 
-    Retain the earliest interactions for each user.
+    Retain the earliest training interactions for each user.
+    This is cold-start-like, not genuine cold start.
     """
 
     _validate_retention(retention)
@@ -220,40 +253,29 @@ def apply_early_profile_sparsity(
 
     retained_groups = []
 
-    grouped = interactions.groupby(
+    for _, user_history in interactions.groupby(
         user_column,
         sort=False,
-    )
-
-    for _, user_history in grouped:
-
+    ):
         user_history = user_history.sort_values(
             order_column,
             kind="mergesort",
         )
 
-        interaction_count = len(user_history)
-
-        retained_count = max(
-            1,
-            round(interaction_count * retention),
-        )
-
-        retained_user_history = user_history.head(
-            retained_count
-        )
-
         retained_groups.append(
-            retained_user_history
+            user_history.head(
+                _get_retained_count(
+                    len(user_history),
+                    retention,
+                )
+            )
         )
-
-    sparsified = pd.concat(
-        retained_groups,
-        ignore_index=True,
-    )
 
     return (
-        sparsified
+        pd.concat(
+            retained_groups,
+            ignore_index=True,
+        )
         .sort_values(
             [user_column, order_column],
             kind="mergesort",

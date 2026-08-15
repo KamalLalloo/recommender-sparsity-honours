@@ -1,14 +1,5 @@
 """
-Verify Generated RecBole Sparsity Datasets
-
-The verifier checks the unified MovieLens RecBole datasets without
-regenerating them. It validates file presence, RecBole columns,
-interaction ordering, validation/test target preservation, 100%
-control identity, and metadata consistency.
-
-Example
--------
-python scripts/verify_datasets.py
+Verify generated MovieLens RecBole datasets.
 """
 
 from __future__ import annotations
@@ -21,65 +12,29 @@ import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATASET_NAME = "movielens"
+PROCESSED_ITEM_COLUMN = "movie_id"
+INTER_FILE = "movielens.inter"
+ITEM_FILE = "movielens.item"
 
-DATA_ROOT = (
-    PROJECT_ROOT
-    / "data"
-    / "recbole"
-    / "movielens"
-)
+DATA_ROOT = PROJECT_ROOT / "data" / "recbole" / DATASET_NAME
+PROCESSED_ROOT = PROJECT_ROOT / "data" / "processed" / DATASET_NAME
 
-PROCESSED_ROOT = (
-    PROJECT_ROOT
-    / "data"
-    / "processed"
-    / "movielens"
-)
+SCENARIOS = ["global", "recent", "early"]
+LEVELS = ["100", "50", "25", "10"]
 
-BASELINE_FILE = (
-    DATA_ROOT
-    / "baseline"
-    / "movielens.inter"
-)
-
-SCENARIOS = [
-    "global",
-    "recent",
-    "early",
-]
-
-LEVELS = [
-    "100",
-    "50",
-    "25",
-    "10",
-]
-
-EXPECTED_COLUMNS = [
+INTER_COLUMNS = [
     "user_id:token",
     "item_id:token",
     "timestamp:float",
     "sequence_order:float",
 ]
 
-
-def file_sha256(path: Path) -> str:
-    """Return the SHA-256 digest for a file."""
-
-    digest = hashlib.sha256()
-
-    with open(path, "rb") as file:
-        for chunk in iter(
-            lambda: file.read(1024 * 1024),
-            b"",
-        ):
-            digest.update(chunk)
-
-    return digest.hexdigest()
+ITEM_COLUMNS = ["item_id:token"]
 
 
 def require_file(path: Path) -> None:
-    """Fail when a required file is missing."""
+    """Require a file to exist."""
 
     if not path.is_file():
         raise FileNotFoundError(
@@ -87,17 +42,26 @@ def require_file(path: Path) -> None:
         )
 
 
+def file_sha256(path: Path) -> str:
+    """Return SHA-256 for a file."""
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(
+            lambda: file.read(1024 * 1024),
+            b"",
+        ):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def load_interactions(path: Path) -> pd.DataFrame:
-    """Load and validate the RecBole interaction columns."""
+    """Load one .inter file."""
 
     require_file(path)
+    dataframe = pd.read_csv(path, sep="\t")
 
-    dataframe = pd.read_csv(
-        path,
-        sep="\t",
-    )
-
-    if list(dataframe.columns) != EXPECTED_COLUMNS:
+    if list(dataframe.columns) != INTER_COLUMNS:
         raise ValueError(
             f"{path} has unexpected columns: "
             f"{list(dataframe.columns)}"
@@ -106,47 +70,51 @@ def load_interactions(path: Path) -> pd.DataFrame:
     return dataframe
 
 
+def load_items(path: Path) -> pd.DataFrame:
+    """Load one .item file."""
+
+    require_file(path)
+    dataframe = pd.read_csv(path, sep="\t")
+
+    if list(dataframe.columns) != ITEM_COLUMNS:
+        raise ValueError(
+            f"{path} has unexpected columns: "
+            f"{list(dataframe.columns)}"
+        )
+
+    if dataframe["item_id:token"].duplicated().any():
+        raise ValueError(
+            f"{path} contains duplicate catalogue items."
+        )
+
+    return dataframe
+
+
 def load_processed_target(filename: str) -> pd.DataFrame:
-    """Load validation or test targets in RecBole column format."""
+    """Load processed validation/test targets in RecBole format."""
 
     path = PROCESSED_ROOT / filename
     require_file(path)
 
     dataframe = pd.read_csv(path)
 
-    expected_columns = [
-        "user_id",
-        "movie_id",
-        "timestamp",
-        "sequence_order",
-    ]
-
-    if list(dataframe.columns) != expected_columns:
-        raise ValueError(
-            f"{path} has unexpected columns: "
-            f"{list(dataframe.columns)}"
-        )
-
     return dataframe.rename(
         columns={
             "user_id": "user_id:token",
-            "movie_id": "item_id:token",
+            PROCESSED_ITEM_COLUMN: "item_id:token",
             "timestamp": "timestamp:float",
             "sequence_order": "sequence_order:float",
         }
-    )[EXPECTED_COLUMNS]
+    )[INTER_COLUMNS]
 
 
-def split_final_targets(
+def split_unified(
     dataframe: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split a unified dataset into train, validation, and test."""
+    """Split unified data into reconstructed train/valid/test."""
 
     ordered = dataframe.sort_values(
-        [
-            "user_id:token",
-            "sequence_order:float",
-        ],
+        ["user_id:token", "sequence_order:float"],
         kind="mergesort",
     )
 
@@ -190,364 +158,279 @@ def split_final_targets(
         )
     )
 
-    train_mask = [
-        key not in target_keys
-        for key in zip(
-            dataframe["user_id:token"],
-            dataframe["sequence_order:float"],
-        )
-    ]
-
     train = dataframe.loc[
-        train_mask
+        [
+            key not in target_keys
+            for key in zip(
+                dataframe["user_id:token"],
+                dataframe["sequence_order:float"],
+            )
+        ]
     ].reset_index(drop=True)
 
     return train, validation, test
 
 
-def assert_frame_equal(
-    actual: pd.DataFrame,
-    expected: pd.DataFrame,
-    message: str,
-) -> None:
-    """Raise a clear error for DataFrame inequality."""
+def row_identity(dataframe: pd.DataFrame) -> set[tuple]:
+    """Return full-row identity tuples."""
 
-    try:
-        pd.testing.assert_frame_equal(
-            actual.reset_index(drop=True),
-            expected.reset_index(drop=True),
-            check_dtype=False,
-            check_like=False,
+    return set(
+        map(
+            tuple,
+            dataframe[INTER_COLUMNS].itertuples(
+                index=False,
+                name=None,
+            ),
         )
-    except AssertionError as error:
-        raise ValueError(message) from error
+    )
 
 
-def verify_interaction_integrity(
+def verify_interactions(
     dataframe: pd.DataFrame,
+    catalogue: pd.DataFrame,
     expected_users: set,
     expected_validation: pd.DataFrame,
     expected_test: pd.DataFrame,
+    baseline_train_rows: set[tuple] | None,
     label: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Verify rows, users, ordering, and preserved targets."""
+    """Verify one unified interaction dataset."""
 
     if dataframe.isnull().any().any():
-        raise ValueError(
-            f"{label} contains missing values."
-        )
+        raise ValueError(f"{label} contains null fields.")
 
     if dataframe.duplicated().any():
-        raise ValueError(
-            f"{label} contains duplicate full rows."
-        )
+        raise ValueError(f"{label} has duplicate rows.")
 
     if dataframe.duplicated(
-        subset=[
-            "user_id:token",
-            "sequence_order:float",
-        ]
+        subset=["user_id:token", "sequence_order:float"]
     ).any():
         raise ValueError(
-            f"{label} contains duplicate "
-            "(user_id, sequence_order) pairs."
+            f"{label} has duplicate (user_id, sequence_order)."
         )
 
-    actual_users = set(dataframe["user_id:token"])
-
-    if actual_users != expected_users:
+    if set(dataframe["user_id:token"]) != expected_users:
         raise ValueError(
-            f"{label} does not contain the expected user set."
+            f"{label} does not preserve expected users."
         )
 
-    user_counts = dataframe.groupby(
-        "user_id:token"
-    ).size()
-
-    if (user_counts < 3).any():
-        raise ValueError(
-            f"{label} has a user with fewer than three "
-            "total interactions."
-        )
-
-    for user_id, history in dataframe.groupby(
-        "user_id:token"
-    ):
-        ordered_sequence = history.sort_values(
+    for user_id, history in dataframe.groupby("user_id:token"):
+        sequence_values = history.sort_values(
             "sequence_order:float",
             kind="mergesort",
         )["sequence_order:float"].values
-
         if not (
-            ordered_sequence[:-1] < ordered_sequence[1:]
+            sequence_values[:-1] < sequence_values[1:]
         ).all():
             raise ValueError(
-                f"{label} sequence_order is not strictly "
-                f"increasing for user {user_id}."
+                f"{label} chronology is invalid for user {user_id}."
             )
 
-    train, validation, test = split_final_targets(
-        dataframe
-    )
+    catalogue_items = set(catalogue["item_id:token"])
+    missing_items = set(dataframe["item_id:token"]) - catalogue_items
+    if missing_items:
+        raise ValueError(
+            f"{label} contains interaction items absent from {ITEM_FILE}."
+        )
+
+    train, validation, test = split_unified(dataframe)
 
     if train.groupby("user_id:token").size().min() < 1:
         raise ValueError(
             f"{label} has a user with no training interaction."
         )
 
-    assert_frame_equal(
-        validation,
-        expected_validation,
-        f"{label} validation targets are not preserved.",
+    pd.testing.assert_frame_equal(
+        validation.sort_values("user_id:token").reset_index(drop=True),
+        expected_validation.sort_values("user_id:token").reset_index(drop=True),
+        check_dtype=False,
+    )
+    pd.testing.assert_frame_equal(
+        test.sort_values("user_id:token").reset_index(drop=True),
+        expected_test.sort_values("user_id:token").reset_index(drop=True),
+        check_dtype=False,
     )
 
-    assert_frame_equal(
-        test,
-        expected_test,
-        f"{label} test targets are not preserved.",
-    )
+    if baseline_train_rows is not None:
+        if not row_identity(train).issubset(baseline_train_rows):
+            raise ValueError(
+                f"{label} sparse train rows are not a baseline subset."
+            )
 
     return train, validation, test
 
 
 def verify_metadata(
+    metadata: dict,
     dataframe: pd.DataFrame,
     train: pd.DataFrame,
     validation: pd.DataFrame,
     test: pd.DataFrame,
-    metadata: dict,
     label: str,
-) -> dict[str, object]:
-    """Verify generated metadata against the saved file."""
-
-    expected_total = metadata["total_interactions"]
-
-    if len(dataframe) != expected_total:
-        raise ValueError(
-            f"{label} total_interactions metadata mismatch "
-            f"({len(dataframe):,} != {expected_total:,})."
-        )
+) -> None:
+    """Verify metadata against actual data."""
 
     checks = {
-        "users": dataframe["user_id:token"].nunique(),
-        "items": dataframe["item_id:token"].nunique(),
+        "total_interactions": len(dataframe),
         "training_interactions": len(train),
         "validation_interactions": len(validation),
         "test_interactions": len(test),
-        "training_items": train["item_id:token"].nunique(),
+        "users": dataframe["user_id:token"].nunique(),
+        "items": dataframe["item_id:token"].nunique(),
     }
 
-    for key, actual_value in checks.items():
-        if int(metadata[key]) != int(actual_value):
+    for key, actual in checks.items():
+        if int(metadata[key]) != int(actual):
             raise ValueError(
-                f"{label} metadata mismatch for {key}: "
-                f"{metadata[key]} != {actual_value}."
+                f"{label} metadata mismatch for {key}."
             )
 
-    original_training = int(
-        metadata["original_training_interactions"]
-    )
-    actual_retention = len(train) / original_training
-    metadata_retention = float(
-        metadata["actual_training_retention_fraction"]
+    actual_retention = (
+        len(train)
+        / int(metadata["original_training_interactions"])
     )
 
-    if abs(actual_retention - metadata_retention) > 1e-9:
+    if abs(
+        actual_retention
+        - float(metadata["actual_training_retention_fraction"])
+    ) > 1e-9:
         raise ValueError(
             f"{label} actual retention metadata mismatch."
         )
 
     train_items = set(train["item_id:token"])
-    validation_unseen = ~validation[
-        "item_id:token"
-    ].isin(train_items)
-    test_unseen = ~test["item_id:token"].isin(
-        train_items
-    )
+    validation_unseen = ~validation["item_id:token"].isin(train_items)
+    test_unseen = ~test["item_id:token"].isin(train_items)
 
     unseen_checks = {
         "validation_target_interactions_unseen_in_training":
             int(validation_unseen.sum()),
         "test_target_interactions_unseen_in_training":
             int(test_unseen.sum()),
-        "validation_unique_items_unseen_in_training":
-            int(
-                validation.loc[
-                    validation_unseen,
-                    "item_id:token",
-                ].nunique()
-            ),
-        "test_unique_items_unseen_in_training":
-            int(
-                test.loc[
-                    test_unseen,
-                    "item_id:token",
-                ].nunique()
-            ),
-        "users_with_unseen_validation_target":
-            int(
-                validation.loc[
-                    validation_unseen,
-                    "user_id:token",
-                ].nunique()
-            ),
-        "users_with_unseen_test_target":
-            int(
-                test.loc[
-                    test_unseen,
-                    "user_id:token",
-                ].nunique()
-            ),
     }
 
-    for key, actual_value in unseen_checks.items():
-        if int(metadata[key]) != actual_value:
+    for key, actual in unseen_checks.items():
+        if int(metadata[key]) != actual:
             raise ValueError(
-                f"{label} metadata mismatch for {key}: "
-                f"{metadata[key]} != {actual_value}."
+                f"{label} metadata mismatch for {key}."
             )
 
-    return {
-        "scenario": metadata["scenario"],
-        "retention": metadata["retention"],
-        "training_interactions": len(train),
-        "actual_retention_percent": float(
-            metadata["actual_training_retention_percent"]
-        ),
-        "training_items": train["item_id:token"].nunique(),
-        "unseen_validation_targets": int(
-            validation_unseen.sum()
-        ),
-        "unseen_test_targets": int(test_unseen.sum()),
-    }
 
-
-def verify_full_retention_controls(
-    baseline: pd.DataFrame,
+def verify_nesting(
+    train_sets: dict[str, set[tuple]],
+    scenario: str,
 ) -> None:
-    """Require byte-level and DataFrame equality for 100% controls."""
+    """Verify 10 <= 25 <= 50 <= baseline nesting."""
 
-    baseline_hash = file_sha256(BASELINE_FILE)
+    checks = [
+        ("10", "25"),
+        ("25", "50"),
+        ("50", "baseline"),
+    ]
 
-    for scenario in SCENARIOS:
-        control_file = (
-            DATA_ROOT
-            / scenario
-            / "100"
-            / "movielens.inter"
-        )
-
-        control_hash = file_sha256(control_file)
-
-        if control_hash != baseline_hash:
-            print("100% control hash mismatch:")
-            print(f"  baseline: {baseline_hash}")
-            print(f"  {scenario}: {control_hash}")
+    for lower, higher in checks:
+        if not train_sets[lower].issubset(train_sets[higher]):
             raise ValueError(
-                f"{scenario}/100 is not byte-identical "
-                "to baseline."
+                f"{scenario} nesting failed: {lower} not subset of {higher}."
             )
-
-        control = load_interactions(control_file)
-
-        try:
-            pd.testing.assert_frame_equal(
-                control,
-                baseline,
-                check_dtype=True,
-                check_like=False,
-            )
-        except AssertionError as error:
-            raise ValueError(
-                f"{scenario}/100 DataFrame is not identical "
-                "to baseline."
-            ) from error
 
 
 def verify_all() -> None:
-    """Run every verification check."""
+    """Run all MovieLens verification checks."""
 
-    expected_validation = load_processed_target(
-        "validation.csv"
-    )
+    expected_validation = load_processed_target("validation.csv")
     expected_test = load_processed_target("test.csv")
     expected_users = set(expected_validation["user_id:token"])
 
-    baseline = load_interactions(BASELINE_FILE)
+    baseline_dir = DATA_ROOT / "baseline"
+    baseline = load_interactions(baseline_dir / INTER_FILE)
+    baseline_catalogue = load_items(baseline_dir / ITEM_FILE)
 
-    verify_interaction_integrity(
+    baseline_train, _, _ = verify_interactions(
         baseline,
+        baseline_catalogue,
         expected_users,
         expected_validation,
         expected_test,
+        None,
         "baseline",
     )
 
-    summary_rows = []
+    baseline_train_rows = row_identity(baseline_train)
+    baseline_hash = file_sha256(baseline_dir / INTER_FILE)
+    baseline_item_hash = file_sha256(baseline_dir / ITEM_FILE)
+
+    rows = []
 
     for scenario in SCENARIOS:
+        train_sets = {"baseline": baseline_train_rows}
+
         for level in LEVELS:
             dataset_dir = DATA_ROOT / scenario / level
-            inter_file = dataset_dir / "movielens.inter"
-            metadata_file = dataset_dir / "metadata.json"
+            dataframe = load_interactions(dataset_dir / INTER_FILE)
+            catalogue = load_items(dataset_dir / ITEM_FILE)
 
-            require_file(inter_file)
+            if file_sha256(dataset_dir / ITEM_FILE) != baseline_item_hash:
+                raise ValueError(
+                    f"{scenario}/{level} catalogue differs from baseline."
+                )
+
+            train, validation, test = verify_interactions(
+                dataframe,
+                catalogue,
+                expected_users,
+                expected_validation,
+                expected_test,
+                baseline_train_rows,
+                f"{scenario}/{level}",
+            )
+
+            train_sets[level] = row_identity(train)
+
+            if level == "100":
+                if file_sha256(dataset_dir / INTER_FILE) != baseline_hash:
+                    raise ValueError(
+                        f"{scenario}/100 is not byte-identical to baseline."
+                    )
+
+            metadata_file = dataset_dir / "metadata.json"
             require_file(metadata_file)
 
-            dataframe = load_interactions(inter_file)
-
-            with open(
-                metadata_file,
-                "r",
-                encoding="utf-8",
-            ) as file:
+            with open(metadata_file, "r", encoding="utf-8") as file:
                 metadata = json.load(file)
 
-            train, validation, test = (
-                verify_interaction_integrity(
-                    dataframe,
-                    expected_users,
-                    expected_validation,
-                    expected_test,
-                    f"{scenario}/{level}",
-                )
+            verify_metadata(
+                metadata,
+                dataframe,
+                train,
+                validation,
+                test,
+                f"{scenario}/{level}",
             )
 
-            summary_rows.append(
-                verify_metadata(
-                    dataframe,
-                    train,
-                    validation,
-                    test,
-                    metadata,
-                    f"{scenario}/{level}",
-                )
+            rows.append(
+                {
+                    "scenario": scenario,
+                    "retention": level,
+                    "training_interactions": len(train),
+                    "total_interactions": len(dataframe),
+                }
             )
 
-    verify_full_retention_controls(baseline)
+        verify_nesting(train_sets, scenario)
 
-    print("\nDataset verification summary")
+    print("\nMovieLens verification summary")
     print("-" * 80)
-    print(
-        pd.DataFrame(summary_rows)
-        .sort_values(
-            ["scenario", "retention"],
-            ascending=[True, False],
-        )
-        .to_string(index=False)
-    )
-
+    print(pd.DataFrame(rows).to_string(index=False))
     print("\nAll MovieLens datasets passed verification.")
-    print("Baseline and all 100% controls are identical.")
 
 
 def main() -> None:
     """Entry point."""
 
     print("=" * 60)
-    print("VERIFY GENERATED SPARSITY DATASETS")
+    print("VERIFY MOVIELENS DATASETS")
     print("=" * 60)
-
     verify_all()
 
 

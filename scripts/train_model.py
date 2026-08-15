@@ -1,18 +1,15 @@
+from __future__ import annotations
+
 import argparse
 import csv
+import hashlib
+import json
+import subprocess
+import sys
 from datetime import datetime
 from logging import getLogger
 from pathlib import Path
 from time import perf_counter
-
-from recbole.config import Config
-from recbole.data import create_dataset, data_preparation
-from recbole.utils import (
-    get_model,
-    get_trainer,
-    init_logger,
-    init_seed,
-)
 
 
 # ==========================================================
@@ -117,6 +114,16 @@ def parse_arguments() -> argparse.Namespace:
         ),
     )
 
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Optional model seed override. If omitted, "
+            "the seed from the YAML/RecBole config is used."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -158,10 +165,16 @@ def validate_dataset_directory(
         )
 
     interaction_filename = f"{dataset_name}.inter"
+    item_filename = f"{dataset_name}.item"
 
     interaction_file = (
         dataset_directory
         / interaction_filename
+    )
+
+    item_file = (
+        dataset_directory
+        / item_filename
     )
 
     if not interaction_file.is_file():
@@ -169,6 +182,13 @@ def validate_dataset_directory(
             "Dataset directory is missing the required "
             "interaction file:\n"
             f"{interaction_file}"
+        )
+
+    if not item_file.is_file():
+        raise FileNotFoundError(
+            "Dataset directory is missing the required "
+            "item catalogue file:\n"
+            f"{item_file}"
         )
 
     try:
@@ -180,6 +200,7 @@ def validate_dataset_directory(
 
     print(f"Dataset directory: {relative_path}")
     print(f"Interaction file : {interaction_filename}")
+    print(f"Item file        : {item_filename}")
     print("Dataset format   : Unified interaction file")
     print("Dataset directory validation passed.")
 
@@ -256,12 +277,22 @@ def create_config(
     config_files: list[Path],
     dataset_directory: Path,
     use_gpu: bool,
+    seed_override: int | None,
 ) -> Config:
     """
     Create the RecBole configuration object.
     """
 
     print("\nLoading RecBole configuration...")
+
+    from recbole.config import Config
+
+    config_dict = {
+        "use_gpu": use_gpu,
+    }
+
+    if seed_override is not None:
+        config_dict["seed"] = seed_override
 
     config = Config(
         model=model_name,
@@ -270,9 +301,7 @@ def create_config(
             str(path)
             for path in config_files
         ],
-        config_dict={
-            "use_gpu": use_gpu,
-        },
+        config_dict=config_dict,
     )
 
     # Override the placeholder data_path from dataset.yaml.
@@ -287,6 +316,110 @@ def create_config(
     return config
 
 
+def read_sparsity_metadata(
+    dataset_directory: Path,
+) -> dict:
+    """
+    Read optional sparsity metadata for generated datasets.
+    """
+
+    metadata_file = dataset_directory / "metadata.json"
+
+    if not metadata_file.is_file():
+        return {}
+
+    with open(
+        metadata_file,
+        "r",
+        encoding="utf-8",
+    ) as file:
+        return json.load(file)
+
+
+def file_sha256(path: Path) -> str:
+    """
+    Return the SHA-256 digest for one file.
+    """
+
+    digest = hashlib.sha256()
+
+    with open(path, "rb") as file:
+        for chunk in iter(
+            lambda: file.read(1024 * 1024),
+            b"",
+        ):
+            digest.update(chunk)
+
+    return digest.hexdigest()
+
+
+def config_sha256(
+    config_files: list[Path],
+) -> str:
+    """
+    Deterministically hash the YAML config files used for a run.
+    """
+
+    digest = hashlib.sha256()
+
+    for path in sorted(
+        config_files,
+        key=lambda value: str(value),
+    ):
+        digest.update(
+            str(path.relative_to(PROJECT_ROOT)).encode(
+                "utf-8"
+            )
+        )
+        digest.update(b"\0")
+        digest.update(
+            file_sha256(path).encode("utf-8")
+        )
+        digest.update(b"\0")
+
+    return digest.hexdigest()
+
+
+def get_git_commit() -> str | None:
+    """
+    Return the current Git commit, or None if unavailable.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "HEAD",
+            ],
+            cwd=PROJECT_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+    ):
+        return None
+
+    return result.stdout.strip() or None
+
+
+def get_config_value(
+    config,
+    key: str,
+):
+    """
+    Return a RecBole config value when present.
+    """
+
+    try:
+        return config[key]
+    except KeyError:
+        return None
+
+
 # ==========================================================
 # Dataset and DataLoaders
 # ==========================================================
@@ -297,6 +430,8 @@ def create_recbole_dataset(config: Config):
     """
 
     print("\nCreating RecBole dataset...")
+
+    from recbole.data import create_dataset
 
     dataset = create_dataset(config)
 
@@ -325,6 +460,8 @@ def prepare_dataloaders(config: Config, dataset):
         "and test DataLoaders..."
     )
 
+    from recbole.data import data_preparation
+
     train_data, valid_data, test_data = data_preparation(
         config,
         dataset,
@@ -345,6 +482,42 @@ def prepare_dataloaders(config: Config, dataset):
 # Model and Trainer
 # ==========================================================
 
+def resolve_model_class(
+    model_name: str,
+):
+    """
+    Resolve the model implementation.
+
+    BERT4Rec uses a project-local loss patch for the RecBole 1.2.1
+    position-zero masked-target issue. All other models use the
+    standard RecBole model registry.
+    """
+
+    if model_name == "BERT4Rec":
+
+        from bert4rec_patch import (
+            PatchedBERT4Rec,
+        )
+
+        print(
+            "Using project-local patched "
+            "BERT4Rec implementation."
+        )
+
+        print(
+            "BERT4Rec patch: "
+            f"{PatchedBERT4Rec.PATCH_DESCRIPTION}"
+        )
+
+        return PatchedBERT4Rec
+
+    from recbole.utils import get_model
+
+    return get_model(
+        model_name
+    )
+
+
 def initialise_model(config: Config, train_data):
     """
     Load and initialise the configured recommendation model.
@@ -354,7 +527,9 @@ def initialise_model(config: Config, train_data):
         f"\nInitialising {config['model']} model..."
     )
 
-    model_class = get_model(config["model"])
+    model_class = resolve_model_class(
+        config["model"]
+    )
 
     # RecBole's quick-start implementation passes the dataset
     # stored by the training DataLoader to the model class.
@@ -362,6 +537,14 @@ def initialise_model(config: Config, train_data):
         config,
         train_data._dataset,
     ).to(config["device"])
+
+    if config["model"] == "BERT4Rec":
+        if model.__class__.__name__ != "PatchedBERT4Rec":
+            raise RuntimeError(
+                "BERT4Rec was requested but the "
+                "project-local patched implementation "
+                "was not initialised."
+            )
 
     print(
         f"{config['model']} model "
@@ -381,6 +564,8 @@ def initialise_trainer(config: Config, model):
     """
 
     print("\nInitialising RecBole trainer...")
+
+    from recbole.utils import get_trainer
 
     trainer_class = get_trainer(
         config["MODEL_TYPE"],
@@ -531,7 +716,7 @@ def print_experiment_summary(
     print(f"Model         : {config['model']}")
     print(f"GPU requested : {use_gpu_requested}")
     print(f"Device        : {config['device']}")
-    print(f"Seed          : {config['seed']}")
+    print(f"Model seed    : {config['seed']}")
     print(f"Valid metric  : {config['valid_metric']}")
 
     try:
@@ -609,6 +794,10 @@ def save_experiment_results(
     test_result,
     training_time: float,
     evaluation_time: float,
+    trainer,
+    model,
+    config_files: list[Path],
+    sparsity_metadata: dict,
 ) -> None:
     """
     Append one completed experiment to experiment_results.csv.
@@ -658,6 +847,24 @@ def save_experiment_results(
                 f"dataset directory: {relative_dataset_path}"
             ) from error
 
+    dataset_name = str(config["dataset"])
+    interaction_file = (
+        dataset_directory
+        / f"{dataset_name}.inter"
+    )
+    item_file = (
+        dataset_directory
+        / f"{dataset_name}.item"
+    )
+
+    checkpoint_path = getattr(
+        trainer,
+        "saved_model_file",
+        None,
+    )
+
+    import recbole
+    import torch
 
     result_row = {
 
@@ -677,7 +884,80 @@ def save_experiment_results(
 
         "model": str(config["model"]),
 
-        "seed": int(config["seed"]),
+        "model_seed": int(config["seed"]),
+
+        "sparsity_seed": sparsity_metadata.get(
+            "sparsity_seed"
+        ),
+
+        "scenario": sparsity_metadata.get(
+            "scenario",
+            (
+                "baseline"
+                if experiment_type == "Baseline"
+                else experiment_type.lower()
+            ),
+        ),
+
+        "scenario_method": sparsity_metadata.get(
+            "scenario_method"
+        ),
+
+        "requested_retention_percent":
+            sparsity_metadata.get(
+                "requested_retention_percent",
+                retention_level,
+            ),
+
+        "actual_training_retention_fraction":
+            sparsity_metadata.get(
+                "actual_training_retention_fraction",
+                1.0 if retention_level == 100 else None,
+            ),
+
+        "actual_training_retention_percent":
+            sparsity_metadata.get(
+                "actual_training_retention_percent",
+                100.0 if retention_level == 100 else None,
+            ),
+
+        "recbole_version": recbole.__version__,
+
+        "torch_version": torch.__version__,
+
+        "python_version": sys.version.split()[0],
+
+        "git_commit": get_git_commit(),
+
+        "config_sha256": config_sha256(
+            config_files
+        ),
+
+        "dataset_inter_sha256": file_sha256(
+            interaction_file
+        ),
+
+        "dataset_item_sha256": file_sha256(
+            item_file
+        ),
+
+        "bert4rec_patch_active": (
+            model.__class__.__name__
+            == "PatchedBERT4Rec"
+        ),
+
+        "max_item_list_length": get_config_value(
+            config,
+            "MAX_ITEM_LIST_LENGTH",
+        ),
+
+        "time_field": str(config["TIME_FIELD"]),
+
+        "checkpoint_path": (
+            str(checkpoint_path)
+            if checkpoint_path
+            else None
+        ),
 
         "device": str(config["device"]),
 
@@ -827,6 +1107,7 @@ def main() -> None:
         config_files,
         dataset_directory,
         arguments.use_gpu,
+        arguments.seed,
     )
 
     resolved_device = str(config["device"])
@@ -845,6 +1126,8 @@ def main() -> None:
             )
 
     print(f"Resolved device: {resolved_device}")
+
+    from recbole.utils import init_logger, init_seed
 
     # Initialise deterministic random seeds before dataset creation.
     init_seed(
@@ -928,6 +1211,12 @@ def main() -> None:
         test_result,
         training_time,
         evaluation_time,
+        trainer,
+        model,
+        config_files,
+        read_sparsity_metadata(
+            dataset_directory
+        ),
     )
 
     print("\n" + "=" * 60)

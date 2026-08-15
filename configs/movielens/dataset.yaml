@@ -17,5 +17,11 @@ load_col:
     - item_id
     - timestamp
     - sequence_order
+  item:
+    - item_id
 
 rm_dup_inter: null
+
+# Frozen MovieLens maximum sequential history length; this
+# explicitly avoids relying on RecBole's default sequence length.
+MAX_ITEM_LIST_LENGTH: 200

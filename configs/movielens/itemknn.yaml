@@ -7,6 +7,7 @@ reproducibility: true
 
 # ItemKNN hyperparameters
 k: 100
+knn_method: item
 
 # Similarity measure
 shrink: 0

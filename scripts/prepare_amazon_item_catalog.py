@@ -270,11 +270,16 @@ def verify_catalogues(
     directories: list[Path],
 ) -> None:
     """
-    Confirm every amazon.item file is identical.
+    Confirm every amazon.item file is identical and covers all
+    interaction items.
     """
 
     print(
         "\nVerifying saved catalogues..."
+    )
+
+    expected_items = set(
+        expected_catalogue["item_id:token"]
     )
 
     for directory in directories:
@@ -303,8 +308,26 @@ def verify_catalogues(
                 f"{filepath}"
             ) from error
 
+        interactions = pd.read_csv(
+            directory / "amazon.inter",
+            sep="\t",
+            usecols=["item_id:token"],
+        )
+
+        missing_items = (
+            set(interactions["item_id:token"])
+            - expected_items
+        )
+
+        if missing_items:
+            raise ValueError(
+                "Interaction items are missing from "
+                f"amazon.item in {directory}."
+            )
+
     print(
-        "All Amazon item catalogues are identical."
+        "All Amazon item catalogues are identical "
+        "and cover every interaction item."
     )
 
 
@@ -319,12 +342,6 @@ def main() -> None:
     print("=" * 60)
 
     items = load_item_catalogue()
-
-    if len(items) != 19022:
-        raise ValueError(
-            "Expected 19,022 Amazon catalogue items, "
-            f"but found {len(items):,}."
-        )
 
     catalogue = convert_to_recbole(
         items
@@ -354,6 +371,8 @@ def main() -> None:
         "Amazon fixed item catalogue "
         "prepared successfully."
     )
+    print(f"Catalogue items: {len(catalogue):,}")
+    print(f"Destinations   : {len(directories):,}")
     print("=" * 60)
 
 

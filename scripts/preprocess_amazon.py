@@ -1186,6 +1186,15 @@ def save_summary(
         temporal_df["timestamp"].max()
     )
 
+    history_lengths = (
+        temporal_df
+        .groupby(
+            "user_id",
+            observed=True,
+        )
+        .size()
+    )
+
     summary = {
 
         "dataset": (
@@ -1314,6 +1323,43 @@ def save_summary(
 
             "test_interactions":
                 int(len(test_df)),
+
+        },
+
+        "post_processing": {
+
+            "users":
+                int(
+                    temporal_df[
+                        "user_id"
+                    ].nunique()
+                ),
+
+            "items":
+                int(
+                    temporal_df[
+                        "item_id"
+                    ].nunique()
+                ),
+
+            "interactions":
+                int(len(temporal_df)),
+
+        },
+
+        "history_lengths": {
+
+            "mean_user_history_length":
+                float(history_lengths.mean()),
+
+            "median_user_history_length":
+                float(history_lengths.median()),
+
+            "minimum_user_history_length":
+                int(history_lengths.min()),
+
+            "maximum_user_history_length":
+                int(history_lengths.max()),
 
         },
 

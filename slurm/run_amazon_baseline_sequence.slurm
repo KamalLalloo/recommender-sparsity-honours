@@ -12,149 +12,144 @@
 
 set -euo pipefail
 
-
-# ==========================================================
-# Fixed project settings
-# ==========================================================
-
 PROJECT_DIR="/home-mscluster/klalloo/recommender-sparsity-honours"
-
 PYTHON="/home-mscluster/klalloo/.conda/envs/recbole_env/bin/python"
-
 SEQUENCE_SCRIPT="$PROJECT_DIR/slurm/run_amazon_baseline_sequence.slurm"
-
 DATASET_DIR="data/recbole/amazon/baseline"
 
-
-# ==========================================================
-# Baseline model sequence
-# ==========================================================
-
+# Indices 0-23 cover the 10 models with deterministic models using seed 2025 and stochastic models using seeds 2025, 2026, 2027.
 MODELS=(
     pop
     itemknn
     bpr
+    bpr
+    bpr
     ease
     neumf
+    neumf
+    neumf
+    multivae
+    multivae
     multivae
     gru4rec
+    gru4rec
+    gru4rec
+    sasrec
+    sasrec
     sasrec
     bert4rec
+    bert4rec
+    bert4rec
+    lightgcn
+    lightgcn
     lightgcn
 )
 
+MODEL_SEEDS=(
+    2025
+    2025
+    2025
+    2026
+    2027
+    2025
+    2025
+    2026
+    2027
+    2025
+    2026
+    2027
+    2025
+    2026
+    2027
+    2025
+    2026
+    2027
+    2025
+    2026
+    2027
+    2025
+    2026
+    2027
+)
 
-# ==========================================================
-# Arguments
-# ==========================================================
+MODEL_COUNT=${#MODELS[@]}
+TOTAL_EXPERIMENTS=${#MODELS[@]}
+DEFAULT_LAST_INDEX=$((TOTAL_EXPERIMENTS - 1))
 
-if [[ $# -lt 2 || $# -gt 3 ]]; then
-    echo "Usage:"
-    echo "  sbatch [Slurm options] $SEQUENCE_SCRIPT \\"
-    echo "      START_INDEX RUN_TYPE [LAST_INDEX]"
-    echo
-    echo "Examples:"
-    echo
-    echo "Run a two-model development test:"
-    echo "  sbatch --job-name=amazon_pop_baseline \\"
-    echo "      $SEQUENCE_SCRIPT 0 development 1"
-    echo
-    echo "Run the complete Amazon baseline sequence:"
-    echo "  sbatch --job-name=amazon_pop_baseline \\"
-    echo "      $SEQUENCE_SCRIPT 0 final 9"
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+    echo "Usage: sbatch [Slurm options] $SEQUENCE_SCRIPT START_INDEX [LAST_INDEX]"
+    echo "Experiments run with --run-type final."
+    echo "Experiment indices range from 0 to $DEFAULT_LAST_INDEX."
     exit 1
 fi
 
 CURRENT_INDEX="$1"
-RUN_TYPE="$2"
-
-DEFAULT_LAST_INDEX=$((${#MODELS[@]} - 1))
-LAST_INDEX="${3:-$DEFAULT_LAST_INDEX}"
-
-
-# ==========================================================
-# Argument validation
-# ==========================================================
+LAST_INDEX="${2:-$DEFAULT_LAST_INDEX}"
 
 if ! [[ "$CURRENT_INDEX" =~ ^[0-9]+$ ]]; then
     echo "ERROR: START_INDEX must be a non-negative integer."
-    echo "Received: $CURRENT_INDEX"
     exit 1
 fi
-
 if ! [[ "$LAST_INDEX" =~ ^[0-9]+$ ]]; then
     echo "ERROR: LAST_INDEX must be a non-negative integer."
-    echo "Received: $LAST_INDEX"
     exit 1
 fi
-
-if (( CURRENT_INDEX >= ${#MODELS[@]} )); then
-    echo "ERROR: START_INDEX is outside the model list."
+if (( CURRENT_INDEX >= TOTAL_EXPERIMENTS )); then
+    echo "ERROR: START_INDEX is outside the experiment list."
     echo "Maximum index: $DEFAULT_LAST_INDEX"
     exit 1
 fi
-
-if (( LAST_INDEX >= ${#MODELS[@]} )); then
-    echo "ERROR: LAST_INDEX is outside the model list."
+if (( LAST_INDEX >= TOTAL_EXPERIMENTS )); then
+    echo "ERROR: LAST_INDEX is outside the experiment list."
     echo "Maximum index: $DEFAULT_LAST_INDEX"
     exit 1
 fi
-
 if (( CURRENT_INDEX > LAST_INDEX )); then
     echo "ERROR: START_INDEX cannot exceed LAST_INDEX."
     exit 1
 fi
-
-if [[ "$RUN_TYPE" != "development" &&
-      "$RUN_TYPE" != "final" ]]; then
-    echo "ERROR: RUN_TYPE must be development or final."
-    echo "Received: $RUN_TYPE"
-    exit 1
-fi
-
 if [[ ! -x "$PYTHON" ]]; then
     echo "ERROR: Python executable was not found:"
     echo "$PYTHON"
     exit 1
 fi
-
 if [[ ! -f "$SEQUENCE_SCRIPT" ]]; then
     echo "ERROR: Sequence script was not found:"
     echo "$SEQUENCE_SCRIPT"
     exit 1
 fi
 
+MODEL="${MODELS[$CURRENT_INDEX]}"
+MODEL_SEED="${MODEL_SEEDS[$CURRENT_INDEX]}"
+
+if [[ ! -d "$PROJECT_DIR/$DATASET_DIR" ]]; then
+    echo "ERROR: Dataset directory was not found:"
+    echo "$PROJECT_DIR/$DATASET_DIR"
+    exit 1
+fi
 if [[ ! -f "$PROJECT_DIR/$DATASET_DIR/amazon.inter" ]]; then
-    echo "ERROR: Baseline interaction file was not found:"
+    echo "ERROR: Dataset interaction file was not found:"
     echo "$PROJECT_DIR/$DATASET_DIR/amazon.inter"
     exit 1
 fi
-
 if [[ ! -f "$PROJECT_DIR/$DATASET_DIR/amazon.item" ]]; then
-    echo "ERROR: Fixed Amazon item catalogue was not found:"
+    echo "ERROR: Fixed item catalogue was not found:"
     echo "$PROJECT_DIR/$DATASET_DIR/amazon.item"
     exit 1
 fi
 
-
-# ==========================================================
-# Current experiment
-# ==========================================================
-
-MODEL="${MODELS[$CURRENT_INDEX]}"
+ITEM_CATALOGUE_COUNT=$(($(wc -l < "$PROJECT_DIR/$DATASET_DIR/amazon.item") - 1))
+if (( ITEM_CATALOGUE_COUNT != 19022 )); then
+    echo "ERROR: Amazon item catalogue should contain 19,022 items."
+    echo "Found: $ITEM_CATALOGUE_COUNT"
+    exit 1
+fi
 
 export TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
-
 cd "$PROJECT_DIR"
-
 mkdir -p logs
 mkdir -p saved
 mkdir -p results/raw
-
-
-# ==========================================================
-# Job information
-# ==========================================================
 
 echo "============================================================"
 echo "AMAZON BASELINE SEQUENCE JOB STARTED"
@@ -167,117 +162,71 @@ echo "Started at        : $(date)"
 echo "Project directory : $(pwd)"
 echo "Git commit        : $(git rev-parse HEAD)"
 echo "Python            : $PYTHON"
-echo
 echo "Current index     : $CURRENT_INDEX"
 echo "Last index        : $LAST_INDEX"
+echo "Total experiments : $TOTAL_EXPERIMENTS"
 echo "Model             : $MODEL"
+echo "Model seed        : $MODEL_SEED"
 echo "Dataset directory : $DATASET_DIR"
 echo "Interaction file  : $PROJECT_DIR/$DATASET_DIR/amazon.inter"
 echo "Item catalogue    : $PROJECT_DIR/$DATASET_DIR/amazon.item"
-echo "Item catalogue n  : $(($(wc -l < "$PROJECT_DIR/$DATASET_DIR/amazon.item") - 1))"
-
-ITEM_CATALOGUE_COUNT=$(($(wc -l < "$PROJECT_DIR/$DATASET_DIR/amazon.item") - 1))
-
-if (( ITEM_CATALOGUE_COUNT != 19022 )); then
-    echo "ERROR: Amazon item catalogue should contain 19,022 items."
-    echo "Found: $ITEM_CATALOGUE_COUNT"
-    exit 1
-fi
-
-echo "Run type          : $RUN_TYPE"
-echo
-
-
-# ==========================================================
-# Environment verification
-# ==========================================================
+echo "Run type          : final"
 
 echo "============================================================"
 echo "GPU INFORMATION"
 echo "============================================================"
-
 nvidia-smi || true
 
-echo
 echo "============================================================"
 echo "PYTHON ENVIRONMENT"
 echo "============================================================"
-
 "$PYTHON" - <<'PY'
 import sys
-
 import recbole
 import torch
-
 print("Python:", sys.version)
 print("PyTorch:", torch.__version__)
 print("RecBole:", recbole.__version__)
 print("CUDA available:", torch.cuda.is_available())
 print("GPU count:", torch.cuda.device_count())
-
 if not torch.cuda.is_available():
-    raise SystemExit(
-        "ERROR: This GPU Slurm job cannot access CUDA."
-    )
-
+    raise SystemExit("ERROR: This GPU Slurm job cannot access CUDA.")
 print("GPU:", torch.cuda.get_device_name(0))
 PY
 
-
-# ==========================================================
-# Run one experiment
-# ==========================================================
-
-echo
 echo "============================================================"
-echo "STARTING $MODEL EXPERIMENT"
+echo "STARTING $MODEL seed $MODEL_SEED"
 echo "============================================================"
-
 "$PYTHON" scripts/train_model.py \
     --dataset amazon \
     --model "$MODEL" \
     --dataset-dir "$DATASET_DIR" \
-    --run-type "$RUN_TYPE" \
+    --run-type final \
+    --seed "$MODEL_SEED" \
     --use-gpu
 
-echo
 echo "============================================================"
-echo "$MODEL EXPERIMENT COMPLETED"
+echo "$MODEL seed $MODEL_SEED COMPLETED"
 echo "============================================================"
 echo "Finished at: $(date)"
-
-
-# ==========================================================
-# Submit the next model only after success
-# ==========================================================
 
 if (( CURRENT_INDEX < LAST_INDEX )); then
     NEXT_INDEX=$((CURRENT_INDEX + 1))
     NEXT_MODEL="${MODELS[$NEXT_INDEX]}"
-    NEXT_JOB_NAME="amazon_${NEXT_MODEL}_baseline"
-
-    echo
-    echo "Submitting next experiment..."
-    echo "Next index : $NEXT_INDEX"
-    echo "Next model : $NEXT_MODEL"
-
+    NEXT_SEED="${MODEL_SEEDS[$NEXT_INDEX]}"
+    NEXT_JOB_NAME="amazon_${NEXT_MODEL}_baseline_seed${NEXT_SEED}"
     NEXT_JOB_ID=$(
         sbatch \
             --parsable \
             --job-name="$NEXT_JOB_NAME" \
             "$SEQUENCE_SCRIPT" \
             "$NEXT_INDEX" \
-            "$RUN_TYPE" \
             "$LAST_INDEX"
     )
-
     echo "Next job submitted successfully."
     echo "Next job ID: $NEXT_JOB_ID"
 else
-    echo
     echo "============================================================"
     echo "AMAZON BASELINE SEQUENCE COMPLETED"
     echo "============================================================"
-    echo "Final model: $MODEL"
-    echo "Completed at: $(date)"
 fi

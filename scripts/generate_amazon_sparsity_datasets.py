@@ -57,7 +57,7 @@ SPARSITY_SCENARIOS = {
     "early": apply_early_profile_sparsity,
 }
 
-SEED = 2025
+SPARSITY_SEED = 2025
 
 EXPECTED_COLUMNS = [
     "user_id",
@@ -409,7 +409,7 @@ def apply_sparsity(
         return sparsity_function(
             interactions=train,
             retention=retention,
-            seed=SEED,
+            seed=SPARSITY_SEED,
         )
 
     return sparsity_function(
@@ -607,6 +607,12 @@ def save_metadata(
         / len(original_train)
     )
 
+    scenario_methods = {
+        "global": "random_per_user",
+        "recent": "recent_history",
+        "early": "early_profile",
+    }
+
     validation_unseen_count = int(
         validation_unseen.sum()
     )
@@ -621,6 +627,9 @@ def save_metadata(
 
         "scenario": scenario,
 
+        "scenario_method":
+            scenario_methods[scenario],
+
         "retention":
             int(retention_level),
 
@@ -628,9 +637,23 @@ def save_metadata(
             int(retention_level),
 
         "seed":
-            SEED
+            SPARSITY_SEED
             if scenario == "global"
             else None,
+
+        "sparsity_seed":
+            SPARSITY_SEED
+            if scenario == "global"
+            else None,
+
+        "retention_rounding":
+            "ceil",
+
+        "minimum_training_interactions_per_user":
+            1,
+
+        "random_retention_levels_nested":
+            scenario == "global",
 
         "users":
             int(

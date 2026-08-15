@@ -123,6 +123,26 @@ def validate_implicit_dataset(df: pd.DataFrame) -> None:
     assert df["movie_id"].isna().sum() == 0
     assert df["timestamp"].isna().sum() == 0
 
+    duplicate_positive_pairs = df.duplicated(
+        subset=[
+            "user_id",
+            "movie_id",
+        ]
+    )
+
+    if duplicate_positive_pairs.any():
+        duplicate_count = int(
+            duplicate_positive_pairs.sum()
+        )
+
+        raise ValueError(
+            "MovieLens contains duplicate positive "
+            "(user_id, movie_id) interactions after "
+            "implicit conversion. This should be investigated "
+            "rather than silently de-duplicated. "
+            f"Duplicate rows: {duplicate_count:,}."
+        )
+
     print("Implicit dataset validation passed.")
 
 
@@ -470,6 +490,12 @@ def save_summary(
     iterations: int
 ) -> None:
 
+    history_lengths = (
+        k_core_df
+        .groupby("user_id")
+        .size()
+    )
+
     repeated_timestamp_users = int(
         k_core_df.groupby("user_id")["timestamp"]
         .apply(lambda timestamps: timestamps.duplicated().any())
@@ -532,6 +558,22 @@ def save_summary(
 
             "test_interactions":
                 int(len(test_df))
+
+        },
+
+        "history_lengths": {
+
+            "mean_user_history_length":
+                float(history_lengths.mean()),
+
+            "median_user_history_length":
+                float(history_lengths.median()),
+
+            "minimum_user_history_length":
+                int(history_lengths.min()),
+
+            "maximum_user_history_length":
+                int(history_lengths.max()),
 
         },
 
