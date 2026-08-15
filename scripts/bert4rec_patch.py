@@ -25,9 +25,27 @@ from RecBole.
 import torch
 import torch.nn.functional as F
 
-from recbole.model.sequential_recommender.bert4rec import (
-    BERT4Rec as RecBoleBERT4Rec,
-)
+try:
+    from recbole.model.sequential_recommender.bert4rec import (
+        BERT4Rec as RecBoleBERT4Rec,
+    )
+except ModuleNotFoundError as error:
+    RecBoleBERT4Rec = object
+    _RECBOLE_IMPORT_ERROR = error
+else:
+    _RECBOLE_IMPORT_ERROR = None
+
+
+def valid_bert4rec_targets(pos_items):
+    """
+    Return the corrected BERT4Rec target-validity mask.
+
+    RecBole item ID 0 is padding. Any positive item ID is a real
+    masked prediction target, including targets selected from
+    sequence position 0.
+    """
+
+    return pos_items.reshape(-1) > 0
 
 
 class PatchedBERT4Rec(RecBoleBERT4Rec):
@@ -39,6 +57,26 @@ class PatchedBERT4Rec(RecBoleBERT4Rec):
         "BERT4Rec CE target-mask fix: "
         "use positive item IDs instead of masked sequence positions"
     )
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialise the inherited RecBole BERT4Rec model.
+        """
+
+        if _RECBOLE_IMPORT_ERROR is not None:
+            raise ModuleNotFoundError(
+                "RecBole is required to initialise PatchedBERT4Rec."
+            ) from _RECBOLE_IMPORT_ERROR
+
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def _valid_target_mask(pos_items):
+        """
+        Identify real masked targets from positive item IDs.
+        """
+
+        return valid_bert4rec_targets(pos_items)
 
     def calculate_loss(self, interaction):
         """
@@ -106,8 +144,8 @@ class PatchedBERT4Rec(RecBoleBERT4Rec):
 
         flat_pos_items = pos_items.reshape(-1)
 
-        valid_targets = (
-            flat_pos_items > 0
+        valid_targets = self._valid_target_mask(
+            pos_items
         )
 
         # A transformed batch can theoretically contain no
