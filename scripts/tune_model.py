@@ -193,7 +193,7 @@ def run_candidate(
     _, validation_result = trainer.fit(
         train_data,
         valid_data,
-        saved=True,
+        saved=False,
         show_progress=config["show_progress"],
     )
 
