@@ -15,7 +15,7 @@ stopping_step: 10
 embedding_size: 64
 
 # Regularisation
-weight_decay: 1e-5
+weight_decay: 0.000001
 
 # Batch sizes
 train_batch_size: 2048

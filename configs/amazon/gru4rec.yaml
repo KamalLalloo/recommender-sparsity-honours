@@ -16,7 +16,7 @@ train_neg_sample_args: ~
 
 # Network
 embedding_size: 64
-hidden_size: 128
+hidden_size: 64
 num_layers: 1
 dropout_prob: 0.2
 

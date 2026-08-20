@@ -6,7 +6,7 @@ seed: 2025
 reproducibility: true
 
 # Regularisation parameter
-reg_weight: 250.0
+reg_weight: 500.0
 
 # Batch sizes
 train_batch_size: 2048
