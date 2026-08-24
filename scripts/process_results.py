@@ -320,7 +320,7 @@ def remove_duplicate_experiments(
 
     duplicate_mask = sorted_results.duplicated(
         subset=EXPERIMENT_KEY_COLUMNS,
-        keep="last",
+        keep="first",
     )
 
     return (
