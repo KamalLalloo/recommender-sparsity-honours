@@ -1,11 +1,3 @@
-"""
-Prepare Fixed MovieLens Item Catalogue for RecBole.
-
-The catalogue contains every MovieLens item in the complete
-post-preprocessing temporal dataset and is written identically to
-the baseline and every sparsity-condition directory.
-"""
-
 from pathlib import Path
 
 import pandas as pd

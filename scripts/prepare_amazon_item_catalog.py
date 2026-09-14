@@ -1,22 +1,8 @@
-"""
-Prepare Fixed Amazon Item Catalogue for RecBole
-
-This script creates a single Amazon .item catalogue containing
-every item in the fully preprocessed Amazon dataset.
-
-The identical catalogue is written to the baseline dataset and
-every sparsity condition so that RecBole uses the same item
-universe for full-sort evaluation across all experiments.
-"""
-
 from pathlib import Path
 
 import pandas as pd
 
 
-# ==========================================================
-# Project Paths
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,9 +22,6 @@ RECBOLE_ROOT = (
 )
 
 
-# ==========================================================
-# Expected Dataset Directories
-# ==========================================================
 
 RETENTION_LEVELS = [
     "100",
@@ -54,9 +37,6 @@ SCENARIOS = [
 ]
 
 
-# ==========================================================
-# Load Catalogue
-# ==========================================================
 
 def load_item_catalogue() -> pd.DataFrame:
     """
@@ -110,9 +90,6 @@ def load_item_catalogue() -> pd.DataFrame:
     return items
 
 
-# ==========================================================
-# RecBole Conversion
-# ==========================================================
 
 def convert_to_recbole(
     items: pd.DataFrame,
@@ -132,9 +109,6 @@ def convert_to_recbole(
     ]
 
 
-# ==========================================================
-# Dataset Directories
-# ==========================================================
 
 def get_dataset_directories() -> list[Path]:
     """
@@ -156,9 +130,6 @@ def get_dataset_directories() -> list[Path]:
     return directories
 
 
-# ==========================================================
-# Validation
-# ==========================================================
 
 def validate_dataset_directories(
     directories: list[Path],
@@ -220,9 +191,6 @@ def validate_dataset_directories(
     )
 
 
-# ==========================================================
-# Save Catalogue
-# ==========================================================
 
 def save_catalogue(
     catalogue: pd.DataFrame,
@@ -261,9 +229,6 @@ def save_catalogue(
         )
 
 
-# ==========================================================
-# Verify Saved Catalogues
-# ==========================================================
 
 def verify_catalogues(
     expected_catalogue: pd.DataFrame,
@@ -330,10 +295,6 @@ def verify_catalogues(
         "and cover every interaction item."
     )
 
-
-# ==========================================================
-# Main
-# ==========================================================
 
 def main() -> None:
 

@@ -1,29 +1,8 @@
-"""
-Prepare MovieLens Dataset for RecBole
-
-This script converts the deterministically ordered MovieLens
-dataset into the unified interaction format required by RecBole.
-The original timestamp is retained for analysis, but
-sequence_order is the deterministic ordering field used by
-RecBole.
-
-Pipeline
---------
-1. Load the chronological interaction dataset
-2. Validate the dataset and sequence_order
-3. Rename columns to RecBole format
-4. Export movielens.inter
-5. Print export summary
-"""
-
 from pathlib import Path
 
 import pandas as pd
 
 
-# ==========================================================
-# Project Paths
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,28 +27,18 @@ OUTPUT_DIR.mkdir(
 )
 
 
-# ==========================================================
-# Load Dataset
-# ==========================================================
 
 def load_dataset() -> pd.DataFrame:
-    """
-    Load the chronologically ordered interaction dataset.
-    """
+    
 
     return pd.read_csv(
         PROCESSED_DATA / "03_temporal_interactions.csv"
     )
 
 
-# ==========================================================
-# Validation
-# ==========================================================
 
 def validate_dataset(df: pd.DataFrame) -> None:
-    """
-    Validate the temporal interaction dataset.
-    """
+   
 
     print("\nValidating dataset...")
 
@@ -125,15 +94,9 @@ def validate_dataset(df: pd.DataFrame) -> None:
     print("Dataset validation passed.")
 
 
-# ==========================================================
-# Convert to RecBole Format
-# ==========================================================
 
 def convert_to_recbole(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Rename columns to the field names expected by RecBole.
-    """
-
+    
     converted = df.rename(
         columns={
             "user_id": "user_id:token",
@@ -153,9 +116,6 @@ def convert_to_recbole(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
-# ==========================================================
-# Export Dataset
-# ==========================================================
 
 def export_dataset(df: pd.DataFrame) -> None:
     """
@@ -173,14 +133,9 @@ def export_dataset(df: pd.DataFrame) -> None:
     print(f"\nSaved: {output_file}")
 
 
-# ==========================================================
-# Summary
-# ==========================================================
 
 def print_summary(df: pd.DataFrame) -> None:
-    """
-    Print dataset statistics.
-    """
+   
 
     print("\nExport Summary")
     print("-" * 40)
@@ -198,9 +153,6 @@ def print_summary(df: pd.DataFrame) -> None:
     )
 
 
-# ==========================================================
-# Main
-# ==========================================================
 
 def main() -> None:
 

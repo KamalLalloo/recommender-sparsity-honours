@@ -1,31 +1,8 @@
-"""
-Prepare Amazon Video Games Dataset for RecBole
-
-This script converts the deterministically ordered Amazon
-Video Games dataset into the unified interaction format
-required by RecBole.
-
-The original timestamp is retained for analysis, while
-sequence_order is the deterministic ordering field used
-for temporal splitting and sequential recommendation.
-
-Pipeline
---------
-1. Load the chronological interaction dataset
-2. Validate the dataset and sequence_order
-3. Rename columns to RecBole format
-4. Export amazon.inter
-5. Print export summary
-"""
-
 from pathlib import Path
 
 import pandas as pd
 
 
-# ==========================================================
-# Project Paths
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,9 +27,6 @@ OUTPUT_DIR.mkdir(
 )
 
 
-# ==========================================================
-# Load Dataset
-# ==========================================================
 
 def load_dataset() -> pd.DataFrame:
     """
@@ -72,9 +46,6 @@ def load_dataset() -> pd.DataFrame:
     return pd.read_csv(filepath)
 
 
-# ==========================================================
-# Validation
-# ==========================================================
 
 def validate_dataset(
     df: pd.DataFrame,
@@ -202,9 +173,6 @@ def validate_dataset(
     print("Dataset validation passed.")
 
 
-# ==========================================================
-# Convert to RecBole Format
-# ==========================================================
 
 def convert_to_recbole(
     df: pd.DataFrame,
@@ -232,9 +200,6 @@ def convert_to_recbole(
     ]
 
 
-# ==========================================================
-# Export Dataset
-# ==========================================================
 
 def export_dataset(
     df: pd.DataFrame,
@@ -260,10 +225,6 @@ def export_dataset(
 
     return output_file
 
-
-# ==========================================================
-# Summary
-# ==========================================================
 
 def print_summary(
     df: pd.DataFrame,
