@@ -1,13 +1,4 @@
-"""
-Generate MovieLens Sparsity Datasets for RecBole
-
-Sparsity is applied only to the training interactions. The original
-validation and test interactions are appended unchanged.
-
-Each generated dataset is saved as a single movielens.inter file.
-RecBole then performs the chronological leave-one-out split internally.
-"""
-
+#this one is for movielens
 from __future__ import annotations
 
 import json
@@ -21,10 +12,6 @@ from sparsity import (
     apply_recent_history_sparsity,
 )
 
-
-# ==========================================================
-# Project Constants
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,11 +58,6 @@ RECBOLE_COLUMN_MAPPING = {
     "sequence_order": "sequence_order:float",
 }
 
-
-# ==========================================================
-# File Loading
-# ==========================================================
-
 def load_dataset(filename: str) -> pd.DataFrame:
     """Load a processed MovieLens dataset."""
 
@@ -109,10 +91,6 @@ def load_processed_splits() -> tuple[
 
     return train, validation, test
 
-
-# ==========================================================
-# Validation
-# ==========================================================
 
 def validate_dataset(
     dataframe: pd.DataFrame,
@@ -309,10 +287,6 @@ def validate_generated_dataset(
         )
 
 
-# ==========================================================
-# Dataset Generation
-# ==========================================================
-
 def apply_sparsity(
     train: pd.DataFrame,
     scenario: str,
@@ -420,10 +394,6 @@ def validate_full_retention_identity(
             "identical to the expected baseline dataset."
         ) from error
 
-
-# ==========================================================
-# File Saving
-# ==========================================================
 
 def save_dataset(
     output_dir: Path,
@@ -579,10 +549,6 @@ def save_metadata(
             indent=4,
         )
 
-
-# ==========================================================
-# Main Generation
-# ==========================================================
 
 def generate_datasets(
     train: pd.DataFrame,

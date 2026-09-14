@@ -10,12 +10,7 @@ import pandas as pd
 def _get_column_names(
     interactions: pd.DataFrame,
 ) -> tuple[str, str]:
-    """
-    Detect the user ID and deterministic ordering fields.
-
-    sequence_order is preferred. timestamp is retained only as a
-    backward-compatible fallback.
-    """
+  
 
     user_column = next(
         (
@@ -59,9 +54,7 @@ def _get_column_names(
 
 
 def _validate_retention(retention: float) -> None:
-    """
-    Validate the requested retention level.
-    """
+  
 
     if not 0 < retention <= 1:
         raise ValueError(
@@ -73,12 +66,7 @@ def _get_retained_count(
     interaction_count: int,
     retention: float,
 ) -> int:
-    """
-    Return the retained interaction count for one user.
-
-    The frozen project rule is ceiling retention with a minimum
-    of one training interaction per user.
-    """
+   
 
     return max(
         1,
@@ -113,12 +101,6 @@ def apply_global_sparsity(
 ) -> pd.DataFrame:
     """
     Apply random per-user interaction retention.
-
-    The repository keeps the historical folder name "global",
-    but the academic meaning is random per-user sparsity. For
-    each user, a stable seed reconstructs the same deterministic
-    shuffle at every retention level, so 10% is a subset of 25%,
-    25% is a subset of 50%, and 50% is a subset of baseline.
     """
 
     _validate_retention(retention)
@@ -183,11 +165,7 @@ def apply_recent_history_sparsity(
     interactions: pd.DataFrame,
     retention: float,
 ) -> pd.DataFrame:
-    """
-    Apply recent-history sparsity.
-
-    Retain the most recent training interactions for each user.
-    """
+    
 
     _validate_retention(retention)
 
@@ -235,13 +213,7 @@ def apply_early_profile_sparsity(
     interactions: pd.DataFrame,
     retention: float,
 ) -> pd.DataFrame:
-    """
-    Apply early-profile sparsity.
-
-    Retain the earliest training interactions for each user.
-    This is cold-start-like, not genuine cold start.
-    """
-
+   
     _validate_retention(retention)
 
     if retention == 1.0:

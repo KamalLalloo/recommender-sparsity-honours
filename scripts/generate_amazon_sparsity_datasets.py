@@ -1,15 +1,3 @@
-"""
-Generate Amazon Video Games Sparsity Datasets for RecBole
-
-Sparsity is applied only to the training interactions.
-The original validation and test interactions are appended
-unchanged.
-
-Each generated dataset is saved as a single amazon.inter file.
-RecBole then performs the chronological leave-one-out split
-internally using sequence_order.
-"""
-
 from __future__ import annotations
 
 import json
@@ -24,9 +12,6 @@ from sparsity import (
 )
 
 
-# ==========================================================
-# Project Constants
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,9 +59,6 @@ RECBOLE_COLUMN_MAPPING = {
 }
 
 
-# ==========================================================
-# File Loading
-# ==========================================================
 
 def load_dataset(
     filename: str,
@@ -129,9 +111,6 @@ def load_processed_splits() -> tuple[
     )
 
 
-# ==========================================================
-# Dataset Validation
-# ==========================================================
 
 def validate_dataset(
     dataframe: pd.DataFrame,
@@ -295,9 +274,6 @@ def validate_processed_splits(
     )
 
 
-# ==========================================================
-# Generated Dataset Validation
-# ==========================================================
 
 def validate_generated_dataset(
     sparse_train: pd.DataFrame,
@@ -389,9 +365,6 @@ def validate_generated_dataset(
         )
 
 
-# ==========================================================
-# Sparsity
-# ==========================================================
 
 def apply_sparsity(
     train: pd.DataFrame,
@@ -418,9 +391,6 @@ def apply_sparsity(
     )
 
 
-# ==========================================================
-# Split Combination
-# ==========================================================
 
 def combine_splits(
     sparse_train: pd.DataFrame,
@@ -448,9 +418,7 @@ def combine_splits(
     )
 
 
-# ==========================================================
-# RecBole Conversion
-# ==========================================================
+
 
 def convert_to_recbole(
     dataframe: pd.DataFrame,
@@ -471,10 +439,6 @@ def convert_to_recbole(
         ]
     )
 
-
-# ==========================================================
-# 100% Identity Validation
-# ==========================================================
 
 def validate_full_retention_identity(
     scenario: str,
