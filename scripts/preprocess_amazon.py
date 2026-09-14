@@ -1,33 +1,3 @@
-"""
-Amazon Video Games 2023 Preprocessing Pipeline
-
-This script performs the complete preprocessing workflow for the
-Amazon Reviews 2023 Video Games dataset.
-
-Pipeline
---------
-1. Load the raw JSONL review dataset
-2. Extract user_id, parent_asin, rating, and timestamp
-3. Validate the raw data
-4. Convert explicit ratings to implicit feedback (rating >= 4)
-5. De-duplicate repeated positive user-item interactions
-6. Apply iterative 5-core filtering
-7. Sort interactions chronologically
-8. Create deterministic sequence_order values
-9. Create leave-one-out train/validation/test splits
-10. Validate each preprocessing stage
-11. Save processed datasets and preprocessing summary
-
-Notes
------
-- parent_asin is used as the recommendation item identifier.
-- Repeated positive interactions between the same user and item
-  are de-duplicated by retaining the most recent positive review.
-- The raw timestamp is retained for analysis.
-- sequence_order is the deterministic ordering field intended
-  for RecBole temporal splitting and sequential recommendation.
-"""
-
 from __future__ import annotations
 
 import json
@@ -36,9 +6,6 @@ from pathlib import Path
 import pandas as pd
 
 
-# ==========================================================
-# Project Paths
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,9 +30,6 @@ OUTPUT_DIR.mkdir(
 )
 
 
-# ==========================================================
-# Project Constants
-# ==========================================================
 
 IMPLICIT_RATING_THRESHOLD = 4.0
 K_CORE = 5
@@ -99,28 +63,11 @@ TEMPORAL_COLUMNS = [
 ]
 
 
-# ==========================================================
-# Load Dataset
-# ==========================================================
 
 def load_reviews(
     path: Path,
     chunk_size: int = LOAD_CHUNK_SIZE,
 ) -> pd.DataFrame:
-    """
-    Load required fields from the Amazon Video Games JSONL file.
-
-    Only fields needed by the recommendation experiment are kept:
-
-        user_id
-        parent_asin -> item_id
-        rating
-        timestamp
-
-    _source_order records the original JSONL row order and is
-    retained temporarily so timestamp ties can be resolved
-    deterministically.
-    """
 
     print("\nLoading Amazon Video Games reviews...")
 
@@ -252,16 +199,10 @@ def load_reviews(
     return reviews
 
 
-# ==========================================================
-# Raw Dataset Validation
-# ==========================================================
-
 def validate_raw_dataset(
     df: pd.DataFrame,
 ) -> None:
-    """
-    Validate the extracted Amazon review dataset.
-    """
+   
 
     print("\nValidating raw Amazon dataset...")
 
@@ -362,9 +303,6 @@ def validate_raw_dataset(
     print("Raw dataset validation passed.")
 
 
-# ==========================================================
-# Implicit Feedback Conversion
-# ==========================================================
 
 def filter_positive_reviews(
     df: pd.DataFrame,
@@ -391,29 +329,10 @@ def filter_positive_reviews(
     return positive
 
 
-# ==========================================================
-# Positive Interaction De-duplication
-# ==========================================================
-
 def deduplicate_positive_interactions(
     df: pd.DataFrame,
 ) -> tuple[pd.DataFrame, int]:
-    """
-    Remove repeated positive interactions for the same user-item.
 
-    If a user has multiple positive reviews for the same
-    parent product, retain the most recent positive review.
-
-    Timestamp ties are resolved using original source-row order.
-
-    Returns
-    -------
-    implicit_df : pd.DataFrame
-        One positive interaction per user-item pair.
-
-    removed_count : int
-        Number of repeated positive interaction rows removed.
-    """
 
     print(
         "\nDe-duplicating positive user-item interactions..."
@@ -477,10 +396,6 @@ def deduplicate_positive_interactions(
     return deduplicated, removed_count
 
 
-# ==========================================================
-# Implicit Dataset Validation
-# ==========================================================
-
 def validate_implicit_dataset(
     df: pd.DataFrame,
 ) -> None:
@@ -527,20 +442,11 @@ def validate_implicit_dataset(
     print("Implicit dataset validation passed.")
 
 
-# ==========================================================
-# Iterative K-Core Filtering
-# ==========================================================
-
 def iterative_k_core(
     df: pd.DataFrame,
     k: int = K_CORE,
 ) -> tuple[pd.DataFrame, int]:
-    """
-    Apply iterative k-core filtering.
-
-    Users and items with fewer than k positive interactions are
-    repeatedly removed until the dataset no longer changes.
-    """
+   
 
     print(
         f"\nApplying iterative {k}-core filtering..."
@@ -556,9 +462,6 @@ def iterative_k_core(
 
         previous_size = len(filtered)
 
-        # -------------------------
-        # Filter users
-        # -------------------------
 
         user_counts = (
             filtered
@@ -629,9 +532,6 @@ def iterative_k_core(
     )
 
 
-# ==========================================================
-# K-Core Validation
-# ==========================================================
 
 def validate_k_core_dataset(
     df: pd.DataFrame,
@@ -702,9 +602,6 @@ def validate_k_core_dataset(
     print("K-core validation passed.")
 
 
-# ==========================================================
-# Chronological Ordering
-# ==========================================================
 
 def sort_chronologically(
     df: pd.DataFrame,
@@ -854,10 +751,6 @@ def validate_temporal_order(
     )
 
 
-# ==========================================================
-# Leave-One-Out Split
-# ==========================================================
-
 def create_leave_one_out_split(
     df: pd.DataFrame,
 ) -> tuple[
@@ -865,18 +758,7 @@ def create_leave_one_out_split(
     pd.DataFrame,
     pd.DataFrame,
 ]:
-    """
-    Create chronological leave-one-out splits.
-
-    For each user:
-
-        final interaction       -> test
-        second-last interaction -> validation
-        all earlier interactions -> train
-
-    Because iterative 5-core filtering has already been applied,
-    every remaining user has at least five interactions.
-    """
+ 
 
     print(
         "\nCreating leave-one-out split..."
@@ -952,10 +834,6 @@ def create_leave_one_out_split(
         test,
     )
 
-
-# ==========================================================
-# Leave-One-Out Validation
-# ==========================================================
 
 def validate_leave_one_out(
     complete: pd.DataFrame,
@@ -1125,9 +1003,7 @@ def save_dataset(
     )
 
 
-# ==========================================================
-# Save Summary
-# ==========================================================
+
 
 def save_summary(
     raw_df: pd.DataFrame,

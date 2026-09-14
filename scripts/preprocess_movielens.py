@@ -1,29 +1,7 @@
-"""
-MovieLens-1M Preprocessing Pipeline
-
-This script performs the complete preprocessing workflow for the
-MovieLens-1M dataset.
-
-Pipeline
---------
-1. Load the raw ratings dataset
-2. Validate the raw data
-3. Convert explicit ratings to implicit feedback (rating >= 4)
-4. Apply iterative 5-core filtering
-5. Sort interactions chronologically
-6. Create leave-one-out train/validation/test splits
-7. Validate each preprocessing stage
-8. Save processed datasets and preprocessing summary
-"""
-
 from pathlib import Path
 import json
 import pandas as pd
 
-
-# ==========================================================
-# Project Paths
-# ==========================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,13 +22,9 @@ OUTPUT_DIR = (
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-
-# ==========================================================
-# Load Dataset
-# ==========================================================
+#loading dataset
 
 def load_ratings(path: Path) -> pd.DataFrame:
-    """Load the MovieLens ratings dataset."""
 
     ratings = pd.read_csv(
         path,
@@ -66,13 +40,9 @@ def load_ratings(path: Path) -> pd.DataFrame:
 
     return ratings
 
-
-# ==========================================================
 # Validation
-# ==========================================================
 
 def validate_raw_dataset(df: pd.DataFrame) -> None:
-    """Validate the raw MovieLens dataset."""
 
     print("\nValidating raw dataset...")
 
@@ -90,39 +60,26 @@ def validate_raw_dataset(df: pd.DataFrame) -> None:
     print("Raw dataset validation passed.")
 
 
-# ==========================================================
-# Implicit Conversion
-# ==========================================================
+#implicit conversion ie i'm keeping ratings >=4
 
 def convert_to_implicit(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Keep ratings >= 4 and remove the rating column.
-    """
+   
 
     print("\nConverting to implicit feedback...")
-
     implicit = df[df["rating"] >= 4].copy()
-
     implicit.drop(columns=["rating"], inplace=True)
-
     return implicit
 
 
-# ==========================================================
-# Validation
-# ==========================================================
+#validation
 
 def validate_implicit_dataset(df: pd.DataFrame) -> None:
     """Validate implicit dataset."""
-
     print("\nValidating implicit dataset...")
-
     assert "rating" not in df.columns
-
     assert df["user_id"].isna().sum() == 0
     assert df["movie_id"].isna().sum() == 0
     assert df["timestamp"].isna().sum() == 0
-
     duplicate_positive_pairs = df.duplicated(
         subset=[
             "user_id",
@@ -146,9 +103,7 @@ def validate_implicit_dataset(df: pd.DataFrame) -> None:
     print("Implicit dataset validation passed.")
 
 
-# ==========================================================
-# Iterative 5-Core Filtering
-# ==========================================================
+#iterative 5 core filtering
 
 def iterative_k_core(df: pd.DataFrame, k: int = 5) -> tuple[pd.DataFrame, int]:
     """
@@ -208,10 +163,6 @@ def iterative_k_core(df: pd.DataFrame, k: int = 5) -> tuple[pd.DataFrame, int]:
     return filtered, iterations
 
 
-# ==========================================================
-# Validation
-# ==========================================================
-
 def validate_k_core_dataset(
     df: pd.DataFrame,
     k: int = 5
@@ -250,9 +201,8 @@ def validate_k_core_dataset(
     print("K-core validation passed.")
 
 
-# ==========================================================
 # Chronological Ordering
-# ==========================================================
+
 
 def sort_chronologically(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -296,9 +246,9 @@ def sort_chronologically(df: pd.DataFrame) -> pd.DataFrame:
 
     return ordered
 
-# ==========================================================
-# Validation
-# ==========================================================
+
+# Validation again
+
 
 def validate_temporal_order(df: pd.DataFrame) -> None:
     """
@@ -350,11 +300,7 @@ def validate_temporal_order(df: pd.DataFrame) -> None:
 
     print("Chronological validation passed.")
 
-
-
-# ==========================================================
 # Leave-One-Out Split
-# ==========================================================
 
 def create_leave_one_out_split(
     df: pd.DataFrame
@@ -476,10 +422,6 @@ def save_dataset(df: pd.DataFrame, filename: str) -> None:
     print(f"\nSaved: {output}")
 
 
-# ==========================================================
-# Save Summary
-# ==========================================================
-
 def save_summary(
     raw_df: pd.DataFrame,
     implicit_df: pd.DataFrame,
@@ -599,9 +541,6 @@ def save_summary(
 
     print(f"Saved: {output}")
 
-# ==========================================================
-# Main
-# ==========================================================
 
 def main():
 
