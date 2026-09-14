@@ -12,9 +12,7 @@ from pathlib import Path
 from time import perf_counter
 
 
-# ==========================================================
-# Project Constants
-# ==========================================================
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,20 +41,9 @@ SUPPORTED_MODELS = {
     "lightgcn": "LightGCN",
 }
 
-# ==========================================================
-# Command-Line Arguments
-# ==========================================================
 
 def parse_arguments() -> argparse.Namespace:
-    """
-    Parse command-line arguments.
-
-    The model name is accepted case-insensitively. For example,
-    both '--model BPR' and '--model bpr' are accepted.
-
-    The dataset directory specifies which benchmark dataset
-    should be loaded (e.g. baseline, global/50, recent/25).
-    """
+   
 
     parser = argparse.ArgumentParser(
         description=(
@@ -128,11 +115,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def resolve_model_name(user_input: str) -> str:
-    """
-    Convert a case-insensitive model argument into the exact
-    model name expected by RecBole.
-    """
-
+   
     normalised_name = user_input.strip().lower()
 
     if normalised_name not in SUPPORTED_MODELS:
@@ -152,9 +135,7 @@ def validate_dataset_directory(
     dataset_directory: Path,
     dataset_name: str,
 ) -> None:
-    """
-    Validate the unified RecBole dataset directory.
-    """
+   
 
     print("\nValidating dataset directory...")
 
@@ -205,20 +186,11 @@ def validate_dataset_directory(
     print("Dataset directory validation passed.")
 
 
-
-
-# ==========================================================
-# Configuration
-# ==========================================================
-
 def build_config_files(
     dataset_name: str,
     model_name: str,
 ) -> list[Path]:
-    """
-    Build the configuration file list for the selected
-    dataset and model.
-    """
+    
 
     config_dir = (
         PROJECT_ROOT
@@ -319,9 +291,7 @@ def create_config(
 def read_sparsity_metadata(
     dataset_directory: Path,
 ) -> dict:
-    """
-    Read optional sparsity metadata for generated datasets.
-    """
+    
 
     metadata_file = dataset_directory / "metadata.json"
 
@@ -356,9 +326,7 @@ def file_sha256(path: Path) -> str:
 def config_sha256(
     config_files: list[Path],
 ) -> str:
-    """
-    Deterministically hash the YAML config files used for a run.
-    """
+    
 
     digest = hashlib.sha256()
 
@@ -381,9 +349,7 @@ def config_sha256(
 
 
 def get_git_commit() -> str | None:
-    """
-    Return the current Git commit, or None if unavailable.
-    """
+   
 
     try:
         result = subprocess.run(
@@ -410,9 +376,7 @@ def get_config_value(
     config,
     key: str,
 ):
-    """
-    Return a RecBole config value when present.
-    """
+   
 
     try:
         return config[key]
@@ -420,14 +384,9 @@ def get_config_value(
         return None
 
 
-# ==========================================================
-# Dataset and DataLoaders
-# ==========================================================
 
 def create_recbole_dataset(config: Config):
-    """
-    Create the RecBole dataset from the unified interaction file.
-    """
+   
 
     print("\nCreating RecBole dataset...")
 
@@ -447,13 +406,7 @@ def create_recbole_dataset(config: Config):
 
 
 def prepare_dataloaders(config: Config, dataset):
-    """
-    Create train, validation, and test DataLoaders.
-
-    The pipeline uses one unified interaction file.
-    RecBole applies the configured chronological leave-one-out
-    split using sequence_order as TIME_FIELD.
-    """
+  
 
     print(
         "\nPreparing train, validation, "
@@ -478,20 +431,10 @@ def prepare_dataloaders(config: Config, dataset):
     return train_data, valid_data, test_data
 
 
-# ==========================================================
-# Model and Trainer
-# ==========================================================
-
 def resolve_model_class(
     model_name: str,
 ):
-    """
-    Resolve the model implementation.
 
-    BERT4Rec uses a project-local loss patch for the RecBole 1.2.1
-    position-zero masked-target issue. All other models use the
-    standard RecBole model registry.
-    """
 
     if model_name == "BERT4Rec":
 
@@ -559,10 +502,7 @@ def initialise_model(config: Config, train_data):
 
 
 def initialise_trainer(config: Config, model):
-    """
-    Select and initialise the correct RecBole trainer.
-    """
-
+    
     print("\nInitialising RecBole trainer...")
 
     from recbole.utils import get_trainer
@@ -585,22 +525,13 @@ def initialise_trainer(config: Config, model):
     return trainer
 
 
-# ==========================================================
-# Training and Evaluation
-# ==========================================================
-
 def train_recommender(
     config: Config,
     trainer,
     train_data,
     valid_data,
 ):
-    """
-    Fit the model and evaluate it on the validation set.
 
-    saved=True stores RecBole's best checkpoint so test
-    evaluation can load the best validation model.
-    """
 
     print("\nStarting model training...")
 
@@ -632,9 +563,7 @@ def evaluate_recommender(
     trainer,
     test_data,
 ):
-    """
-    Evaluate the trained model on the test set.
-    """
+   
 
     print("\nStarting test evaluation...")
 
@@ -657,17 +586,11 @@ def evaluate_recommender(
     return test_result, evaluation_time
 
 
-# ==========================================================
-# Result Display
-# ==========================================================
-
 def print_metrics(
     title: str,
     metrics,
 ) -> None:
-    """
-    Print a RecBole metric dictionary in a readable format.
-    """
+    
 
     print(f"\n{title}")
     print("-" * 40)
@@ -700,10 +623,7 @@ def print_experiment_summary(
     evaluation_time: float,
     use_gpu_requested: bool,
 ) -> None:
-    """
-    Print the final experiment summary.
-    """
-
+  
     print("\n" + "=" * 60)
     print("Experiment Results")
     print("=" * 60)
@@ -754,17 +674,9 @@ def print_experiment_summary(
     )
 
 
-# ==========================================================
-# Result Saving
-# ==========================================================
 
 def convert_metric_values(metrics) -> dict:
-    """
-    Convert RecBole metric values into normal Python values.
-
-    RecBole may return NumPy scalar values. Converting them to
-    floats ensures that the values can be written cleanly to CSV.
-    """
+   
 
     converted_metrics = {}
 
@@ -805,11 +717,7 @@ def save_experiment_results(
     Validation and test metrics are given prefixes so that their
     meanings remain clear in the results file.
 
-    Examples
-    --------
-    validation_ndcg@10
-    test_recall@10
-    test_mrr@20
+
     """
 
     print("\nSaving experiment results...")
@@ -1043,9 +951,6 @@ def save_experiment_results(
     )
 
 
-# ==========================================================
-# Main
-# ==========================================================
 
 def main() -> None:
     """
