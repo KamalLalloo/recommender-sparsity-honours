@@ -6,7 +6,7 @@ A controlled evaluation of how recommender-system performance changes when the q
 
 - **Author:** Kamal Lalloo
 - **Supervisor:** Dr. Hairong Bau
-- **Project period:** June–October 2026
+- **Project period:** June–November 2026
 - **Framework:** RecBole 1.2.1
 
 Research report: _Not All Sparsity Is Equal: A Controlled Evaluation of Recommender Systems under Limited User Feedback_
