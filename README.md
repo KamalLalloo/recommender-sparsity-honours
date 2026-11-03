@@ -1,92 +1,121 @@
 # Recommender System Robustness Under Sparse User Feedback
 
-Evaluating how recommender-system performance changes as user interaction histories become increasingly sparse.
+A controlled evaluation of how recommender-system performance changes when the quantity and temporal position of available user feedback are systematically reduced.
 
 **BSc Honours Research Project — University of the Witwatersrand**
 
 - **Author:** Kamal Lalloo
 - **Supervisor:** Dr. Hairong Bau
-- **Project period:** June 2026 – October 2026
-- **Framework:** RecBole
+- **Project period:** June–October 2026
+- **Framework:** RecBole 1.2.1
+
+Research report: _Not All Sparsity Is Equal: A Controlled Evaluation of Recommender Systems under Limited User Feedback_
+
+---
 
 ## Overview
 
 This project evaluates the robustness of recommender systems under limited user feedback.
 
-Ten recommendation models from classical, linear, neural, sequential, and graph-based paradigms are evaluated on two benchmark datasets under controlled reductions in training interaction data.
+Ten recommendation models spanning non-personalised, classical, linear, neural, sequential, and graph-based approaches are evaluated on MovieLens-1M and Amazon Video Games 2023.
 
-The experimental design keeps validation targets, test targets, and the item candidate catalogue fixed while progressively reducing only the training histories available to each model. This allows performance degradation to be compared consistently across sparsity conditions.
+The study varies both:
 
-- the **amount** of training feedback retained; and
-- the **temporal position** of the retained interactions.
+- the **amount of training feedback retained**; and
+- the **temporal position of the retained interactions**.
 
-The study investigates:
+Validation targets, test targets, and the item catalogue remain fixed across sparsity conditions so that changes in recommendation performance can be attributed more directly to the information available during training.
 
-1. How does recommender-system performance change as user interaction data becomes progressively sparse?
-2. How do different recommendation model families perform when users have limited interaction histories?
-3. Do modern neural, sequential, and graph-based recommenders consistently outperform simpler classical approaches under sparse-feedback conditions?
+The study focuses on controlled robustness evaluation rather than proposing a new recommendation algorithm.
+
+---
+
+## Research Questions
+
+The study examines:
+
+1. How does recommendation performance change as the available user feedback decreases?
+2. Does performance under sparse user histories depend on the temporal location of the retained feedback?
+3. Are more complex recommender approaches consistently more robust than simpler alternatives?
+
+---
 
 ## Datasets
 
-| Dataset                     | Purpose                                                             |
-| --------------------------- | ------------------------------------------------------------------- |
-| **MovieLens-1M**            | Relatively dense benchmark used for controlled sparsity experiments |
-| **Amazon Video Games 2023** | Naturally sparse real-world e-commerce recommendation dataset       |
-
-Both datasets are converted to positive implicit-feedback data using ratings of **4 or higher**.
-
-After preprocessing and iterative 5-core filtering:
+Two benchmark datasets are used:
 
 | Dataset                 |  Users |  Items | Interactions |
 | ----------------------- | -----: | -----: | -----------: |
 | MovieLens-1M            |  6,034 |  3,125 |      574,376 |
 | Amazon Video Games 2023 | 63,413 | 19,022 |      533,550 |
 
-## Preprocessing
+MovieLens and Amazon were selected because they provide substantially different interaction-history regimes. MovieLens contains relatively long user histories, while Amazon remains much sparser after preprocessing.
 
-The preprocessing pipeline performs the following steps:
+Ratings of **4 or higher** are retained as positive interactions for implicit-feedback modelling.
 
-1. Load and validate the raw dataset.
-2. Convert ratings of `>= 4` into positive implicit interactions.
-3. Deduplicate repeated positive Amazon user-item interactions by retaining the most recent positive interaction.
-4. Apply iterative **5-core filtering** so every remaining user and item has at least five interactions before sparsity simulation.
-5. Sort interactions chronologically and create a deterministic `sequence_order`.
-6. Create chronological leave-one-out targets:
-   - final interaction → test
-   - second-last interaction → validation
-   - all earlier interactions → training
+---
 
-The 5-core constraint is applied to the full preprocessed dataset only. Sparse training conditions are not re-filtered to remain 5-core.
+## Experimental Design
 
-## Sparsity Scenarios
+### Preprocessing
 
-Sparsity is applied only to the training interactions. Validation and test interactions remain unchanged across all conditions.
+The preprocessing pipeline:
 
-Experiments use requested retention levels of:
+1. loads and validates the raw dataset;
+2. retains ratings of `>= 4` as positive interactions;
+3. deduplicates repeated positive Amazon user-item interactions by retaining the most recent positive interaction;
+4. applies iterative **5-core filtering**, ensuring that every remaining user and item has at least five interactions before sparsification;
+5. orders interactions chronologically, using original source-row order to resolve timestamp ties deterministically; and
+6. creates a per-user temporal leave-one-out split:
+   - final interaction → test;
+   - second-last interaction → validation;
+   - all earlier interactions → training.
+
+The 5-core constraint is applied before sparsification. Sparse training conditions are not re-filtered to remain 5-core.
+
+### Sparse-Feedback Conditions
+
+Sparsity is applied only to the training portion of each user's interaction history. Validation and test interactions remain fixed across all conditions.
+
+The experiment uses nominal training-retention levels of:
 
 - **100%**
 - **50%**
 - **25%**
 - **10%**
 
-For each user, the retained interaction count is calculated as:
+For a user with `n` training interactions and retention rate `p`:
 
 ```text
-max(1, ceil(training_history_length × retention))
+retained = max(1, ceil(n × p))
 ```
 
-Because of integer rounding and the minimum-one rule, realised training retention may be slightly higher than the nominal retention level.
+The minimum-one rule prevents users from disappearing from the sparse training data. Consequently, realised retention can exceed the nominal percentage for users with short histories, particularly in the Amazon dataset.
 
-| Scenario                     | Description                                                                                     |
-| ---------------------------- | ----------------------------------------------------------------------------------------------- |
-| **Baseline**                 | Retains the complete training history                                                           |
-| **Random Per-User Sparsity** | Retains a deterministic random subset of each user's training interactions                      |
-| **Recent-History Sparsity**  | Retains only the most recent training interactions for each user                                |
-| **Early-Profile Sparsity**   | Retains only the earliest training interactions, representing a cold-start-like limited profile |
+Three sparse-feedback mechanisms are evaluated:
 
-The repository historically uses the directory name `global` for the random per-user condition. It does **not** perform unrestricted global deletion across the complete interaction matrix.
+| Condition           | Description                                                                    |
+| ------------------- | ------------------------------------------------------------------------------ |
+| **Random per-user** | Retains a deterministic random subset from across each user's training history |
+| **Recent-history**  | Retains the most recent training interactions                                  |
+| **Early-profile**   | Retains the earliest training interactions                                     |
+| **Baseline**        | Retains the complete training history                                          |
 
-Random per-user subsets are deterministic and nested across retention levels.
+Random per-user subsets are deterministic and nested across retention levels: the 10% subset is contained within the 25% subset, which is contained within the 50% subset.
+
+> **Repository naming note:** the directory name `global` is retained for historical reasons and refers to the **random per-user** condition. It does not perform unrestricted global deletion across the complete interaction matrix.
+
+---
+
+## Fixed Item Catalogue
+
+Each dataset uses the same post-preprocessing item catalogue across the baseline and every sparse condition.
+
+This ensures that performance differences are not caused by changes in the evaluation candidate universe.
+
+Some validation or test items may no longer appear in a sparse training condition while remaining valid evaluation candidates. These cases are retained deliberately and are tracked by the generated sparsity metadata.
+
+---
 
 ## Models
 
@@ -94,67 +123,150 @@ Ten recommender systems are evaluated:
 
 | Category                              | Models                    |
 | ------------------------------------- | ------------------------- |
-| **Baseline**                          | Pop                       |
-| **Classical Collaborative Filtering** | ItemKNN, BPR              |
+| **Non-personalised**                  | Pop                       |
+| **Classical collaborative filtering** | ItemKNN, BPR              |
 | **Linear**                            | EASE                      |
 | **Neural**                            | NeuMF, MultiVAE           |
 | **Sequential**                        | GRU4Rec, SASRec, BERT4Rec |
-| **Graph-Based**                       | LightGCN                  |
+| **Graph-based**                       | LightGCN                  |
+
+The model set is intended to provide a cross-paradigm comparison rather than focus on a single recommender family.
+
+---
 
 ## Hyperparameter Tuning
 
-Model hyperparameters are tuned separately for each dataset using a constrained grid search on the **100% baseline condition only**.
+Hyperparameters are tuned separately for MovieLens and Amazon on the **100% full-data baseline only**.
 
-Candidate configurations are compared using validation **NDCG@10**.
+Candidate configurations are selected using validation **NDCG@10**.
 
-The selected baseline configuration is then held fixed across all sparsity conditions for that dataset. This prevents sparsity comparisons from being confounded by separately retuning models at each retention level.
+The selected dataset-specific configuration is then frozen and reused at 50%, 25%, and 10% retention under all three sparsity mechanisms.
+
+The experiment therefore measures the robustness of a common baseline-selected configuration rather than the best performance obtainable by independently retuning each sparse condition.
+
+Search spaces are defined in:
+
+```text
+configs/tuning/search_spaces.yaml
+```
+
+Tuning results are written under:
+
+```text
+results/tuning/
+```
+
+---
+
+## Training
+
+Stochastic models are evaluated using three seeds:
+
+```text
+2025
+2026
+2027
+```
+
+The stochastic models are:
+
+- BPR
+- NeuMF
+- MultiVAE
+- GRU4Rec
+- SASRec
+- BERT4Rec
+- LightGCN
+
+Deterministic models are run once per condition:
+
+- Pop
+- ItemKNN
+- EASE
+
+The final reported values for stochastic models are means across the three seeds.
+
+---
 
 ## Evaluation
 
-Evaluation uses chronological leave-one-out splitting and **full-sort ranking** over a fixed item catalogue.
+All models are evaluated using **full-sort ranking** over the fixed item catalogue rather than sampled-negative evaluation.
 
-The same validation and test targets are preserved across baseline and sparse conditions.
+The same validation and test targets are maintained across the baseline and sparse conditions.
 
-Performance is measured using:
+Reported metrics are:
 
-- Recall@5/10/20
-- HitRate@5/10/20
-- NDCG@5/10/20
-- MRR@5/10/20
+- Recall@5, Recall@10, Recall@20
+- HitRate@5, HitRate@10, HitRate@20
+- NDCG@5, NDCG@10, NDCG@20
+- MRR@5, MRR@10, MRR@20
 
-`NDCG@10` is used for validation-based checkpoint selection and hyperparameter tuning.
+**NDCG@10** is the primary metric and is also used for validation-based checkpoint selection and hyperparameter tuning.
 
-Under the single-target leave-one-out protocol, Recall@K and HitRate@K are equivalent success indicators, while NDCG@K and MRR@K additionally capture the rank position of the held-out item.
+Because temporal leave-one-out produces one relevant held-out test item per user, Recall@K and HitRate@K are numerically equivalent under this evaluation protocol.
+
+---
 
 ## Robustness Analysis
 
-Model robustness is measured using performance degradation relative to the full-data baseline:
+Sparse-condition performance is compared with each model's full-data baseline using relative NDCG change:
 
 ```text
-Relative Drop =
-    (Baseline Score - Sparse Score)
-    / Baseline Score
+Relative change =
+    (Sparse score - Baseline score)
+    -------------------------------- × 100
+              Baseline score
 ```
 
-A smaller relative drop indicates that a model retains more of its baseline performance under reduced feedback.
+Therefore:
 
-Relative degradation is analysed together with absolute metric values to avoid favouring models that are stable only because they begin from a low baseline score.
+- a **negative** value indicates degradation;
+- `0%` indicates no change; and
+- a **positive** value indicates improvement relative to the full-data baseline.
 
-## Fixed Item Catalogue
+Relative change is considered together with absolute recommendation quality. A model can appear relatively stable simply because it begins from a low baseline score, so robustness is not interpreted independently of absolute performance.
 
-Each dataset uses a fixed item catalogue across the baseline and all sparsity conditions.
+---
 
-This ensures that changes in model performance are caused by reduced training information rather than changes in the evaluation candidate universe.
+## Statistical Analysis
 
-Some validation or test items may become unseen in a sparse training condition while remaining valid evaluation candidates. These cases are tracked in the generated sparsity metadata.
+Statistical comparisons use aggregate model-condition results.
 
-## BERT4Rec Patch
+For stochastic models, the three training seeds are averaged before statistical testing so that repeated training runs are not treated as independent observations.
 
-The project includes a local compatibility patch for BERT4Rec under RecBole 1.2.1.
+The analysis includes:
 
-The patch corrects cross-entropy target selection so that a legitimate masked target at sequence position zero is not incorrectly discarded.
+- Friedman omnibus tests;
+- Kendall's `W` effect sizes;
+- Nemenyi post-hoc model comparisons;
+- Wilcoxon signed-rank comparisons with Holm correction; and
+- Spearman rank correlations for cross-dataset agreement.
 
-The patch changes only the masked-target validity logic. The BERT4Rec architecture, forward pass, masking procedure, prediction logic, and evaluation behaviour remain inherited from RecBole.
+The intended level of inference is the aggregate model-condition level rather than individual-user significance.
+
+---
+
+## BERT4Rec Compatibility Patch
+
+The project includes a small compatibility patch for BERT4Rec under RecBole 1.2.1.
+
+The patch corrects masked-target validity handling so that a legitimate masked target at sequence position zero is not incorrectly discarded.
+
+It changes only the target-validity handling. It does **not** modify:
+
+- the BERT4Rec architecture;
+- the forward pass;
+- the masking procedure;
+- prediction logic; or
+- evaluation behaviour.
+
+The implementation is located at:
+
+```text
+scripts/bert4rec_patch.py
+```
+
+---
 
 ## Repository Structure
 
@@ -450,7 +562,7 @@ Full-sort evaluation
     ↓
 Result processing
     ↓
-Baseline, sparsity, and cross-dataset analysis
+Baseline, sparsity, statistical, and cross-dataset analysis
 ```
 
 ---
@@ -459,14 +571,42 @@ Baseline, sparsity, and cross-dataset analysis
 
 The experiment pipeline generates:
 
-- raw experiment results in `results/raw/experiment_results.csv`
-- tuning results for each dataset/model
-- processed condition summaries
-- relative robustness/degradation measures
-- reproducibility metadata including configuration and dataset hashes
-- baseline, sparsity, and cross-dataset analysis notebooks
+- raw experiment results;
+- hyperparameter-tuning outputs;
+- processed condition summaries;
+- relative robustness measures;
+- sparsity and reproducibility metadata;
+- dataset/configuration hashes where recorded by the experiment scripts; and
+- analysis notebooks for baseline, sparsity, and cross-dataset comparisons.
 
-## Proposal
+The primary raw experiment result file is generated at:
+
+```text
+results/raw/experiment_results.csv
+```
+
+Generated research data, raw/processed experiment outputs, model checkpoints, logs, and other large runtime artifacts are excluded from version control where specified by `.gitignore`.
+
+They can be regenerated from the preprocessing, experiment, and analysis scripts provided in the repository.
+
+---
+
+## Analysis Notebooks
+
+The notebooks provide the main exploratory, verification, and results-analysis workflow:
+
+| Notebook                          | Purpose                                                |
+| --------------------------------- | ------------------------------------------------------ |
+| `01_data_exploration.ipynb`       | Dataset exploration                                    |
+| `02_preprocessing_checks.ipynb`   | Verification of preprocessing and dataset construction |
+| `03_results_verification.ipynb`   | Experiment-result validation                           |
+| `04_baseline_analysis.ipynb`      | Full-data baseline comparisons                         |
+| `05_sparsity_analysis.ipynb`      | Sparse-feedback analysis                               |
+| `06_cross_dataset_analysis.ipynb` | Cross-dataset comparison                               |
+
+---
+
+## Research Documents
 
 The original research proposal is stored under:
 
@@ -502,14 +642,15 @@ This keeps the repository focused on the code, configurations, tests, analysis w
 
 ---
 
-The final research report is stored under:
-
-```text
-docs/dissertation/
-```
-
-## Scope
+## Research Scope
 
 This project evaluates existing recommender systems rather than proposing a new recommendation algorithm.
 
-Its main contribution is a controlled empirical comparison of how different recommendation paradigms degrade as user feedback becomes progressively limited.
+Its principal contribution is a controlled cross-paradigm evaluation showing that sparse-feedback robustness depends jointly on:
+
+- interaction quantity;
+- temporal position;
+- model choice; and
+- dataset characteristics.
+
+The results demonstrate that sparsity should not be characterised only by how much interaction data remains. Which parts of a user's history remain available can materially change the behaviour and ranking of recommender systems.
