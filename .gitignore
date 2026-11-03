@@ -1,5 +1,6 @@
 project_overview.md
 methodology_freeze.md
+/final_audit.md
 # ==========================================
 # Python
 # ==========================================
@@ -9,6 +10,8 @@ requirements_before_scipy_downgrade.txt
 __pycache__/
 *.py[cod]
 *$py.class
+
+referenced_papers/
 
 # ==========================================
 # Virtual Environment
@@ -100,3 +103,7 @@ dist/
 saved/
 checkpoint/
 log_tensorboard/
+
+# Temporary sparse-history verification
+scripts/verify_sparse_test_history.py
+sparse_history_verification.md
